@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from paramiko import SSHClient
+from pymavlink import mavutil
 from scp import SCPClient
 
 from config import config
@@ -12,7 +13,7 @@ from schemas import Action, ButtonAction, Message, Status
 dir_path = Path(__file__).parent.parent
 
 
-def connect(ssh0, ssh1):
+def connect(ssh0: SSHClient, ssh1: SSHClient):
     ssh0.load_system_host_keys()
     ssh0.connect(
         config.drone_ip0,
@@ -30,13 +31,13 @@ def connect(ssh0, ssh1):
         )
 
 
-def disconnect(ssh0, ssh1):
+def disconnect(ssh0: SSHClient, ssh1: SSHClient):
     ssh0.close()
     ssh1.close()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     yield
 
 
@@ -54,7 +55,7 @@ pid0 = None
 pid1 = None
 
 
-def start(ssh0, ssh1):
+def start(ssh0: SSHClient, ssh1: SSHClient):
     global pid0, pid1
 
     if pid0 is None:
@@ -66,7 +67,7 @@ def start(ssh0, ssh1):
         )
         scp0.close()
 
-    if pid1 is None and config.drone_ip1:
+    if pid1 is None and not config.is_one_drone:
         scp1 = SCPClient(ssh1.get_transport())
         scp1.put(
             dir_path / "to_copter",
@@ -85,13 +86,8 @@ def start(ssh0, ssh1):
         pid0 = int(stdout_str.split()[1].strip())
         stderr_str = stderr.read().decode()
         print("STDOUT:", stdout_str, "STDERR:", stderr_str, "PID: ", pid0)
-        # if stderr_str:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #         detail=stderr_str,
-        #     )
 
-    if pid1 is None and config.drone_ip1:
+    if pid1 is None and not config.is_one_drone:
         _, stdout, stderr = ssh1.exec_command(
             '/bin/bash -ic "python3 to_copter/flight1.py &"',
             get_pty=True,
@@ -101,178 +97,54 @@ def start(ssh0, ssh1):
         pid1 = int(stdout_str.split()[1].strip())
         stderr_str = stderr.read().decode()
         print("STDOUT:", stdout_str, "STDERR:", stderr_str, "PID: ", pid1)
-        # if stderr_str:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #         detail=stderr_str,
-        #     )
 
 
-def emergency_shutdown(ssh0, ssh1):
+def perform_action(action: str):
     global pid0, pid1
 
-    if pid0 is not None:
-        _, stdout, stderr = ssh0.exec_command(
-            f'/bin/bash -ic "kill -9 {pid0}"',
-            get_pty=True,
-            timeout=10,
-        )
-        pid0 = None
+    pid0 = None
+    pid1 = None
 
-    _, stdout, stderr = ssh0.exec_command(
-        '/bin/bash -ic "python3 to_copter/interrupt.py"',
-        get_pty=True,
-        timeout=10,
+    mav0 = mavutil.mavlink_connection(
+        f"udpout:{config.drone_ip0}:{config.drone_mavlink_port0}",
     )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
+    if not config.is_one_drone:
+        mav1 = mavutil.mavlink_connection(
+            f"udpout:{config.drone_ip1}:{config.drone_mavlink_port1}"
         )
 
-    if not config.drone_ip1:
-        return
+    msg = action.upper().encode("utf-8")
 
-    if pid1 is not None:
-        _, stdout, stderr = ssh1.exec_command(
-            f'/bin/bash -ic "kill -9 {pid1}"',
-            get_pty=True,
-            timeout=10,
-        )
-        pid1 = None
+    mav0.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_INFO, msg)
+    if not config.is_one_drone:
+        mav1.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_INFO, msg)
 
-    _, stdout, stderr = ssh1.exec_command(
-        '/bin/bash -ic "python3 to_copter/interrupt.py"',
-        get_pty=True,
-        timeout=10,
-    )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
-        )
-
-
-def land(ssh0, ssh1):
-    global pid0, pid1
-
-    if pid0 is not None:
-        _, stdout, stderr = ssh0.exec_command(
-            f'/bin/bash -ic "kill -9 {pid0}"',
-            get_pty=True,
-        )
-        pid0 = None
-
-    _, stdout, stderr = ssh0.exec_command(
-        '/bin/bash -ic "python3 to_copter/land.py &"',
-        get_pty=True,
-        timeout=10,
-    )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
-        )
-
-    if not config.drone_ip1:
-        return
-
-    if pid1 is not None:
-        _, stdout, stderr = ssh1.exec_command(
-            f'/bin/bash -ic "kill -9 {pid1}"',
-            get_pty=True,
-        )
-        pid1 = None
-
-    _, stdout, stderr = ssh1.exec_command(
-        '/bin/bash -ic "python3 to_copter/land.py &"',
-        get_pty=True,
-        timeout=10,
-    )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
-        )
-
-
-def pause(ssh0, ssh1):
-    global pid0, pid1
-
-    if pid0 is not None:
-        _, stdout, stderr = ssh0.exec_command(
-            f'/bin/bash -ic "kill -9 {pid0}"',
-            get_pty=True,
-            timeout=10,
-        )
-        pid0 = None
-    _, stdout, stderr = ssh0.exec_command(
-        '/bin/bash -ic "python3 to_copter/pause.py"',
-        get_pty=True,
-        timeout=10,
-    )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
-        )
-
-    if not config.drone_ip1:
-        return
-
-    if pid1 is not None:
-        _, stdout, stderr = ssh1.exec_command(
-            f'/bin/bash -ic "kill -9 {pid1}"',
-            get_pty=True,
-            timeout=10,
-        )
-        pid1 = None
-
-    _, stdout, stderr = ssh1.exec_command(
-        '/bin/bash -ic "python3 to_copter/pause.py"',
-        get_pty=True,
-        timeout=10,
-    )
-    print("STDOUT:", stdout.read().decode())
-    stderr_str = stderr.read().decode()
-    if stderr_str:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=stderr_str,
-        )
+    mav0.close()
+    if not config.is_one_drone:
+        mav1.close()
 
 
 @app.post("/api/action", response_model=Message)
 def handle_button_action(button_data: ButtonAction):
-    ssh0, ssh1 = SSHClient(), SSHClient()
-    connect(ssh0, ssh1)
     if button_data.action == Action.start_mission:
+        ssh0, ssh1 = SSHClient(), SSHClient()
+        connect(ssh0, ssh1)
         start(ssh0, ssh1)
+        disconnect(ssh0, ssh1)
         message = "[INFO] Полетное задание запущено"
     elif button_data.action == Action.emergency_shutdown:
-        emergency_shutdown(ssh0, ssh1)
+        perform_action("INTERRUPT")
         message = "[ALERT] Экстренное выключение активировано"
     elif button_data.action == Action.land:
-        land(ssh0, ssh1)
+        perform_action("LAND")
         message = "[INFO] Посадка инициирована"
     elif button_data.action == Action.pause:
-        pause(ssh0, ssh1)
+        perform_action("PAUSE")
         message = "[INFO] Полет приостановлен"
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown action"
         )
-    disconnect(ssh0, ssh1)
 
     return Message(message=message)
 
@@ -300,37 +172,20 @@ def get_status(drone_id: int):
     connect(ssh0, ssh1)
     connection = True
     readiness = True
-
-    if drone_id == 0:
-        try:
-            _, stdout, _ = ssh0.exec_command(
-                'bash -ic "rosrun clover selfcheck.py"',
-                timeout=config.selfcheck_timeout,
-                get_pty=True,
-            )
-            stdout_str = stdout.read().decode()
-            if check_error(stdout_str):
-                print("STDOUT: ", stdout_str)
-                readiness = False
-        except Exception as e:
-            print("ERROR: ", e)
-            connection = False
+    try:
+        _, stdout, _ = (ssh0 if drone_id == 0 else ssh1).exec_command(
+            'bash -ic "rosrun clover selfcheck.py"',
+            timeout=config.selfcheck_timeout,
+            get_pty=True,
+        )
+        stdout_str = stdout.read().decode()
+        if check_error(stdout_str):
+            print("STDOUT: ", stdout_str)
             readiness = False
-    elif drone_id == 1:
-        try:
-            _, stdout, _ = ssh1.exec_command(
-                'bash -ic "rosrun clover selfcheck.py"',
-                timeout=config.selfcheck_timeout,
-                get_pty=True,
-            )
-            stdout_str = stdout.read().decode()
-            if check_error(stdout_str):
-                print("STDOUT: ", stdout_str)
-                readiness = False
-        except Exception as e:
-            print("ERROR: ", e)
-            connection = False
-            readiness = False
+    except Exception as e:
+        print("ERROR: ", e)
+        connection = False
+        readiness = False
     disconnect(ssh0, ssh1)
     return Status(connection=connection, readiness=readiness)
 

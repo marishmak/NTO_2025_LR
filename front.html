@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlyingGOAT</title>
+    <style>
+        /* Стили остаются без изменений */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, hsl(120, 16%, 92%), #eefff0);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #566354, #1f3e28);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: glow 2s infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 10px #c9d8ca, 0 0 20px #9fcb9c;
+            }
+            to {
+                text-shadow: 0 0 20px #2c6d3d, 0 0 30px #004e16;
+            }
+        }
+
+        /* Контейнер кнопок */
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        /* Стиль кнопок */
+        button {
+            background: linear-gradient(135deg, #3f8a3f, #3e8e41);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        button.emergency {
+            background: linear-gradient(135deg, #c1271c, #ba000d); /* Красный градиент */
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        /* Терминал */
+        .terminal {
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            width: 90%;
+            max-width: 800px;
+            height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .terminal::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 5px;
+        }
+
+        .terminal::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Статус дронов */
+        .drone-status {
+            margin-top: 20px;
+            width: 90%;
+            max-width: 800px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .drone-status div {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Заголовок -->
+    <h1>FlyingGOAT</h1>
+
+    <!-- Контейнер с кнопками -->
+    <div class="button-container">
+        <button id="startMission">Запуск полетного задания</button>
+        <button id="emergencyShutdown" class="emergency">Экстренное выключение</button> <!-- Добавлен класс emergency -->
+        <button id="land">Посадка</button>
+        <button id="pause">Пауза</button>
+    </div>
+
+    <!-- Терминал статуса -->
+    <div class="terminal" id="statusTerminal">
+        <!-- Здесь будет выводиться текст -->
+    </div>
+
+    <!-- Статус дронов -->
+    <div class="drone-status" id="droneStatus">
+        <!-- Здесь будут отображаться статусы дронов -->
+    </div>
+
+    <script>
+        // Функция для отправки данных на сервер
+        async function sendToBackend(action) {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                appendToTerminal(data.message);
+            } catch (error) {
+                console.error('Error sending data to backend:', error);
+                appendToTerminal('[ERROR] Не удалось связаться с сервером');
+            }
+        }
+
+        // Функция для добавления текста в терминал
+        function appendToTerminal(message) {
+            const terminal = document.getElementById('statusTerminal');
+            terminal.innerHTML += message + '<br>';
+            terminal.scrollTop = terminal.scrollHeight; // Автопрокрутка вниз
+        }
+
+        // Обработчики событий для кнопок
+        document.getElementById('startMission').addEventListener('click', () => {
+            sendToBackend('start_mission');
+        });
+
+        document.getElementById('emergencyShutdown').addEventListener('click', () => {
+            sendToBackend('emergency_shutdown');
+        });
+
+        document.getElementById('land').addEventListener('click', () => {
+            sendToBackend('land');
+        });
+
+        document.getElementById('pause').addEventListener('click', () => {
+            sendToBackend('pause');
+        });
+
+        // Глобальные переменные для хранения элементов статуса дронов
+        const droneElements = {};
+
+        // Функция для инициализации статусов дронов
+        function initializeDroneStatus() {
+            const droneStatusContainer = document.getElementById('droneStatus');
+            for (let droneId = 0; droneId < 2; droneId++) {
+                const statusDiv = document.createElement('div');
+                statusDiv.id = `drone-${droneId}`;
+                statusDiv.innerHTML = `Дрон ${droneId}: Соединение - <span id="connection-${droneId}">✘</span>, Готовность - <span id="readiness-${droneId}">✘</span>`;
+                droneStatusContainer.appendChild(statusDiv);
+
+                // Сохраняем ссылки на элементы
+                droneElements[droneId] = {
+                    connection: document.getElementById(`connection-${droneId}`),
+                    readiness: document.getElementById(`readiness-${droneId}`)
+                };
+            }
+        }
+
+        // Функция для обновления статуса дронов
+        async function fetchDroneStatus() {
+            for (let droneId = 0; droneId < 2; droneId++) {
+                try {
+                    const response = await fetch(`http://127.0.0.1:8000/api/status/${droneId}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const status = await response.json();
+
+                    // Обновляем текст в существующих элементах
+                    const droneElement = droneElements[droneId];
+                    droneElement.connection.textContent = status.connection ? '✔' : '✘';
+                    droneElement.readiness.textContent = status.readiness ? '✔' : '✘';
+                } catch (error) {
+                    console.error(`Error fetching status for drone ${droneId}:`, error);
+
+                    // Если ошибка, устанавливаем статус "✘"
+                    const droneElement = droneElements[droneId];
+                    droneElement.connection.textContent = '✘';
+                    droneElement.readiness.textContent = '✘';
+                }
+            }
+        }
+
+        // Инициализация статусов дронов
+        initializeDroneStatus();
+
+        // Обновление статусов каждые 30 секунд
+        setInterval(fetchDroneStatus, 15000);
+
+        // Первичная загрузка статусов
+        fetchDroneStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+fastapi[standard]~=0.115.12
+pydantic~=2.10.6
+pydantic-settings
+paramiko
+scp

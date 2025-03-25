@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from paramiko import SSHClient
 from PIL import Image
@@ -20,7 +20,6 @@ from schemas import (
     ButtonAction,
     DroneState,
     FireData,
-    ImageCoord,
     Message,
     Status,
 )
@@ -255,26 +254,36 @@ def update_drone_state(drone_id: int, new_state: DroneState):
 frames = []
 
 
-@app.post("/api/process-frame", response_model=List[Tuple[int, int, int, int]])
-async def process_image(file: UploadFile = File(...)):
-    global frames
-    image_data = await file.read()
-    pil_image = Image.open(io.BytesIO(image_data))
-    image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+@app.websocket("/api/process-frame")
+async def websocket_process_frame(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_bytes()
 
-    final_img, coordinates, _ = main_fire_detection(image)
-    frames.append(final_img)
-    return coordinates
+            pil_image = Image.open(io.BytesIO(data))
+            image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            final_img, coordinates, _ = main_fire_detection(image)
+
+            frames.append(final_img)
+
+            await websocket.send_json({"coordinates": coordinates})
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
 
 
 coords = []
 
 
-@app.post("/api/process-coords")
-def process_coords(coord: ImageCoord):
-    global coords
-    # x y area
-    coords.extend(coord.coords)
+@app.websocket("/api/process-coords")
+async def websocket_process_coords(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            coords.extend(data["coords"])
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
 
 
 @app.get("/api/fire-data")

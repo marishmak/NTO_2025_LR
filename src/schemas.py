@@ -31,10 +31,6 @@ class DroneState(BaseModel):
     ready_to_land: bool
 
 
-class ImageCoord(BaseModel):
-    coords: List[Tuple[float, float, float]]
-
-
 class FireData(BaseModel):
     image_data: str
     coordinates: Tuple[float, float]

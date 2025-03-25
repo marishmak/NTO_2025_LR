@@ -1,6 +1,6 @@
+import json
 import math
 import sys
-from io import BytesIO
 from threading import Thread
 from typing import Tuple
 
@@ -16,8 +16,9 @@ from sensor_msgs.msg import CameraInfo, Image
 from std_srvs.srv import Trigger
 from tf2_geometry_msgs import PointStamped
 from tf2_ros import Buffer, TransformListener
+from websockets.sync.client import connect as websocket_connect
 
-sys.stdout = open("flight0.log", "w")
+# sys.stdout = open("flight0.log", "w")
 
 rospy.init_node("flight0")
 
@@ -90,14 +91,20 @@ camera_matrix = np.reshape(np.array(camera_info.K, dtype="float64"), (3, 3))
 dist_coeffs = np.array(camera_info.D, dtype="float64")
 object_point = np.array(
     [
-        (-90 / 2, -60 / 2, 0),  # Bottom-left corner  (-45, -30, 0)
-        (90 / 2, -60 / 2, 0),  # Bottom-right corner (45, -30, 0)
-        (90 / 2, 60 / 2, 0),  # Top-right corner    (45, 30, 0)
-        (-90 / 2, 60 / 2, 0),  # Top-left corner     (-45, 30, 0)
+        (-60 / 2, -60 / 2, 0),  # Bottom-left corner
+        (60 / 2, -60 / 2, 0),  # Bottom-right corner
+        (60 / 2, 60 / 2, 0),  # Top-right corner
+        (-60 / 2, 60 / 2, 0),  # Top-left corner
     ]
 )
 counter = 0
 do_recognition = False
+websocket_frame = websocket_connect(
+    f"{API_BASEURL.replace('http', 'ws')}/process-frame"
+)
+websocket_coords = websocket_connect(
+    f"{API_BASEURL.replace('http', 'ws')}/process-coords"
+)
 
 
 def transform_xyz_yaw(
@@ -120,23 +127,17 @@ def img_callback(msg):
     if not do_recognition:
         return
 
-    counter += 1
-    if counter % 5 != 0:
-        return
+    # counter += 1
+    # if counter % 5 != 0:
+    #     return
 
     try:
         image = bridge.imgmsg_to_cv2(msg, "bgr8")
 
         _, img_encoded = cv2.imencode(".jpg", image)
-        resp = requests.post(
-            f"{API_BASEURL}/process-frame",
-            files={"file": ("image.jpg", BytesIO(img_encoded), "image/jpeg")},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            rospy.loginfo(f"Error processing frame: {resp.status_code}")
-            return
-        coords = resp.json()
+        websocket_frame.send(img_encoded.tobytes())
+        resp = websocket_frame.recv()
+        coords = json.loads(resp)["coordinates"]
         rospy.loginfo(f"Coords: {coords}")
 
         corners_points = []
@@ -189,11 +190,7 @@ def img_callback(msg):
 
         rospy.loginfo(f"Corners points: {corners_points}")
 
-        requests.post(
-            f"{API_BASEURL}/process-coords",
-            json={"coords": corners_points},
-            timeout=10,
-        )
+        websocket_coords.send(json.dumps({"coords": corners_points}))
     except Exception as e:
         rospy.loginfo(f"Error processing frame: {e}")
 
@@ -343,3 +340,6 @@ try:
     requests.post(f"{API_BASEURL}/reset_pids/0", timeout=10)
 except Exception as e:
     rospy.loginfo(f"Error setting final state: {e}")
+
+websocket_frame.close()
+websocket_coords.close()

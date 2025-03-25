@@ -120,9 +120,9 @@ def img_callback(msg):
     if not do_recognition:
         return
 
-    counter += 1
-    if counter % 5 != 0:
-        return
+    # counter += 1
+    # if counter % 5 != 0:
+    #     return
 
     try:
         image = bridge.imgmsg_to_cv2(msg, "bgr8")

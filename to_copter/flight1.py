@@ -1,7 +1,7 @@
 import math
-import time
 from threading import Thread
 
+import requests
 import rospy
 from clover import srv
 from mavros_msgs.srv import CommandBool
@@ -24,6 +24,7 @@ land = rospy.ServiceProxy("land", Trigger)
 
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
+API_BASEURL = "http://localhost:8000/api"
 
 LAND = False
 INTERRUPT = False
@@ -120,14 +121,37 @@ def land_wait():
 
 # 4->14->13->3->4
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
-start_time = time.monotonic()
 navigate_wait(z=1.5, frame_id="aruco_4")
 navigate_wait(z=1.5, frame_id="aruco_14")
 navigate_wait(z=1.5, frame_id="aruco_13")
 navigate_wait(z=1.5, frame_id="aruco_3")
 navigate_wait(z=1.5, frame_id="aruco_4")
-end_time = time.monotonic()
 
-rospy.sleep(end_time - start_time)
+try:
+    rospy.loginfo("Setting state to ready to land")
+    requests.post(f"{API_BASEURL}/state/1", json={"ready_to_land": True})
+except Exception as e:
+    rospy.loginfo(f"Error setting state: {e}")
+
+cnt_errors = 0
+rospy.loginfo("Waiting for drone 0 to be ready to land")
+while not rospy.is_shutdown():
+    if cnt_errors > 3:
+        rospy.loginfo("Drone 0 is not ready to land, breaking")
+        break
+    try:
+        r = requests.get(f"{API_BASEURL}/state/0", timeout=3)
+        r.raise_for_status()
+        if r.json()["ready_to_land"]:
+            break
+    except Exception as e:
+        rospy.loginfo(f"Error getting state: {e}")
+        cnt_errors += 1
+    rospy.sleep(0.2)
 
 land_wait()
+
+try:
+    requests.post(f"{API_BASEURL}/state/1", json={"ready_to_land": False})
+except Exception as e:
+    rospy.loginfo(f"Error setting final state: {e}")

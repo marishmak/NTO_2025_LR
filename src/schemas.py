@@ -21,3 +21,7 @@ class Message(BaseModel):
 class Status(BaseModel):
     connection: bool
     readiness: bool
+
+
+class DroneState(BaseModel):
+    ready_to_land: bool

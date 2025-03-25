@@ -8,7 +8,8 @@ from pymavlink import mavutil
 from scp import SCPClient
 
 from config import config
-from schemas import Action, ButtonAction, Message, Status
+from drone_state import drone_state_repo
+from schemas import Action, ButtonAction, DroneState, Message, Status
 
 dir_path = Path(__file__).parent.parent
 
@@ -195,3 +196,14 @@ def reset_pids():
     global pid0, pid1
     pid0 = None
     pid1 = None
+
+
+@app.get("/api/state/{drone_id}", response_model=DroneState)
+def get_drone_state(drone_id: int):
+    return drone_state_repo.get_state(drone_id)
+
+
+@app.post("/api/state/{drone_id}", response_model=DroneState)
+def update_drone_state(drone_id: int, new_state: DroneState):
+    drone_state_repo.update_state(drone_id, new_state)
+    return new_state

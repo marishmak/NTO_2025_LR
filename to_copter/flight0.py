@@ -89,7 +89,7 @@ tf_listener = TransformListener(tf_buffer)
 camera_info = rospy.wait_for_message("main_camera/camera_info", CameraInfo)
 camera_matrix = np.reshape(np.array(camera_info.K, dtype="float64"), (3, 3))
 dist_coeffs = np.array(camera_info.D, dtype="float64")
-object_point = np.array(
+object_point_60_60 = np.array(
     [
         (-0.6 / 2, -0.6 / 2, 0),  # Bottom-left corner
         (0.6 / 2, -0.6 / 2, 0),  # Bottom-right corner
@@ -97,6 +97,23 @@ object_point = np.array(
         (-0.6 / 2, 0.6 / 2, 0),  # Top-left corner
     ]
 )
+object_point_60_90 = np.array(
+    [
+        (-0.6 / 2, -0.9 / 2, 0),  # Bottom-left corner
+        (0.6 / 2, -0.9 / 2, 0),  # Bottom-right corner
+        (0.6 / 2, 0.9 / 2, 0),  # Top-right corner
+        (-0.6 / 2, 0.9 / 2, 0),  # Top-left corner
+    ]
+)
+object_point_90_90 = np.array(
+    [
+        (-0.9 / 2, -0.9 / 2, 0),  # Bottom-left corner
+        (0.9 / 2, -0.9 / 2, 0),  # Bottom-right corner
+        (0.9 / 2, 0.9 / 2, 0),  # Top-right corner
+        (-0.9 / 2, 0.9 / 2, 0),  # Top-left corner
+    ]
+)
+# other things
 counter = 0
 do_recognition = False
 websocket_frame = websocket_connect(
@@ -153,17 +170,24 @@ def img_callback(msg):
 
         corners_points = []
         for coord in coords:
+            image_point = [
+                (coord[0], coord[1] + coord[3]),
+                (coord[0] + coord[2], coord[1] + coord[3]),
+                (coord[0] + coord[2], coord[1]),
+                (coord[0], coord[1]),
+            ]
+            area = polygon_area(image_point)
+
+            if area <= 2000:
+                object_point = object_point_60_60
+            elif 2000 <= area <= 2500:
+                object_point = object_point_60_90
+            else:
+                object_point = object_point_90_90
+
             _, rvec, tvec = cv2.solvePnP(
                 np.array(object_point, dtype="float32"),
-                np.array(
-                    [
-                        (coord[0], coord[1] + coord[3]),
-                        (coord[0] + coord[2], coord[1] + coord[3]),
-                        (coord[0] + coord[2], coord[1]),
-                        (coord[0], coord[1]),
-                    ],
-                    dtype="float32",
-                ),
+                np.array(image_point, dtype="float32"),
                 camera_matrix,
                 dist_coeffs,
             )
@@ -182,7 +206,6 @@ def img_callback(msg):
                     curr_time,
                 )
                 corner_points.append(world_pt)
-            print(corner_points)
 
             corners_points.append(
                 [

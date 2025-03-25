@@ -83,16 +83,23 @@ def navigate_wait(
 
     while not rospy.is_shutdown():
         if LAND:
-            set_velocity(vx=0, vy=0, vz=0, frame_id="body")
+            set_velocity(vx=0, vy=0, vz=0, frame_id="aruco_map")
             land_wait()
             exit()
         if INTERRUPT:
-            set_velocity(vx=0, vy=0, vz=0, frame_id="body")
+            set_velocity(vx=0, vy=0, vz=0, frame_id="aruco_map")
             arming(False)
             exit()
         if PAUSE:
-            set_velocity(vx=0, vy=0, vz=0, frame_id="body")
+            telem = get_telemetry(frame_id="aruco_map")
             while not rospy.is_shutdown() and PAUSE:
+                if LAND:
+                    land_wait()
+                    exit()
+                if INTERRUPT:
+                    arming(False)
+                    exit()
+                set_position(x=telem.x, y=telem.y, z=telem.z, frame_id="aruco_map")
                 rospy.sleep(0.2)
             navigate(
                 x=x,

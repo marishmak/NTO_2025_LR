@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Tuple
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +23,7 @@ def connect(ssh0: SSHClient, ssh1: SSHClient):
         config.drone_username,
         config.drone_password,
     )
-    if config.drone_ip1:
+    if not config.is_one_drone:
         ssh1.load_system_host_keys()
         ssh1.connect(
             config.drone_ip1,
@@ -34,7 +35,8 @@ def connect(ssh0: SSHClient, ssh1: SSHClient):
 
 def disconnect(ssh0: SSHClient, ssh1: SSHClient):
     ssh0.close()
-    ssh1.close()
+    if not config.is_one_drone:
+        ssh1.close()
 
 
 @asynccontextmanager
@@ -167,6 +169,39 @@ def check_error(stdout_str: str) -> bool:
     return False
 
 
+def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float, float]:
+    # if drone_id == 0:
+    #     connection_str = f"udpin:0.0.0.0:14551@{config.drone_ip0}:{config.drone_mavlink_port0}"
+    # elif drone_id == 1 and config.is_one_drone:
+    #     return -1, -1
+    # else:
+    #     connection_str = f"udpin:0.0.0.0:14551@{config.drone_ip1}:{config.drone_mavlink_port1}"
+    # print(connection_str)
+    # mav = mavutil.mavlink_connection(connection_str)
+    # msg = mav.recv_match(type="SYS_STATUS", blocking=True)
+    # print(msg)
+    # if msg is not None:
+    #     return msg.voltage_battery / 1000, msg.battery_remaining
+    # mav.close()
+    # return -1, -1
+    if drone_id == 1 and config.is_one_drone:
+        return 0, 0
+    try:
+        _, stdout, _ = (ssh0 if drone_id == 0 else ssh1).exec_command(
+            'bash -ic "rostopic echo /mavros/battery -n 1 | grep -e \"^voltage\" -e \"^percentage\""',
+            timeout=10,
+            get_pty=True,
+        )
+        stdout_str = stdout.read().decode()
+        print("STDOUT: ", stdout_str)
+        voltage = float(stdout_str.split("\n")[0].split(":")[1].strip())
+        percentage = float(stdout_str.split("\n")[1].split(":")[1].strip())
+        return round(voltage, 2), round(percentage, 2)
+    except Exception as e:
+        print("ERROR: ", e)
+        return 0, 0
+
+
 @app.get("/api/status/{drone_id}", response_model=Status)
 def get_status(drone_id: int):
     ssh0, ssh1 = SSHClient(), SSHClient()
@@ -187,8 +222,14 @@ def get_status(drone_id: int):
         print("ERROR: ", e)
         connection = False
         readiness = False
+    battery_voltage, battery_percent = get_battery(ssh0, ssh1, drone_id)
     disconnect(ssh0, ssh1)
-    return Status(connection=connection, readiness=readiness)
+    return Status(
+        connection=connection,
+        readiness=readiness,
+        battery_voltage=battery_voltage,
+        battery_percent=battery_percent,
+    )
 
 
 @app.post("/api/reset_pids")

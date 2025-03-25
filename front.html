@@ -215,13 +215,20 @@
             for (let droneId = 0; droneId < 2; droneId++) {
                 const statusDiv = document.createElement('div');
                 statusDiv.id = `drone-${droneId}`;
-                statusDiv.innerHTML = `Дрон ${droneId}: Соединение - <span id="connection-${droneId}">✘</span>, Готовность - <span id="readiness-${droneId}">✘</span>`;
+                statusDiv.innerHTML = `
+                    Дрон ${droneId}: 
+                    Соединение - <span id="connection-${droneId}">✘</span>, 
+                    Готовность - <span id="readiness-${droneId}">✘</span>, 
+                    Батарея - <span id="battery-percent-${droneId}">0%</span>, 
+                    Напряжение - <span id="battery-voltage-${droneId}">0 В</span>`;
                 droneStatusContainer.appendChild(statusDiv);
 
                 // Сохраняем ссылки на элементы
                 droneElements[droneId] = {
                     connection: document.getElementById(`connection-${droneId}`),
-                    readiness: document.getElementById(`readiness-${droneId}`)
+                    readiness: document.getElementById(`readiness-${droneId}`),
+                    batteryPercent: document.getElementById(`battery-percent-${droneId}`),
+                    batteryVoltage: document.getElementById(`battery-voltage-${droneId}`)
                 };
             }
         }
@@ -247,6 +254,8 @@
                     const droneElement = droneElements[droneId];
                     droneElement.connection.textContent = status.connection ? '✔' : '✘';
                     droneElement.readiness.textContent = status.readiness ? '✔' : '✘';
+                    droneElement.batteryPercent.textContent = `${status.battery_percent}%`;
+                    droneElement.batteryVoltage.textContent = `${status.battery_voltage} В`;
                 });
             } catch (error) {
                 console.error('Error fetching drone statuses:', error);
@@ -256,6 +265,8 @@
                     const droneElement = droneElements[droneId];
                     droneElement.connection.textContent = '✘';
                     droneElement.readiness.textContent = '✘';
+                    droneElement.batteryPercent.textContent = '0%';
+                    droneElement.batteryVoltage.textContent = '0 В';
                 }
             }
         }

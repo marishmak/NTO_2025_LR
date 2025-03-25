@@ -21,6 +21,8 @@ class Message(BaseModel):
 class Status(BaseModel):
     connection: bool
     readiness: bool
+    battery_voltage: float
+    battery_percent: float
 
 
 class DroneState(BaseModel):

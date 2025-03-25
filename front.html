@@ -333,33 +333,37 @@
         fetchDroneStatus();
 
         // Функция для получения данных о пожарах
-        async function fetchFireData() {
+        const fireDataWS = new WebSocket("ws://127.0.0.1:8000/api/fire-data");
+
+        fireDataWS.onopen = () => {
+            console.log("Connected to fire data WebSocket");
+        };
+
+        fireDataWS.onmessage = (event) => {
             try {
-                const response = await fetch('http://127.0.0.1:8000/api/fire-data');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const fireData = await response.json();
-
-                // Очищаем терминал изображений перед добавлением новых данных
+                // Parse the received JSON data (an array of fire data objects)
+                const fireDataArray = JSON.parse(event.data);
                 const imageTerminal = document.getElementById('imageTerminal');
+                
+                // Optionally clear existing images (if you want to replace old frames)
                 imageTerminal.innerHTML = '';
 
-                // Добавляем новые данные
-                fireData.forEach(({ image_data, coordinates, area }) => {
+                // Append each fire data object to the image terminal
+                fireDataArray.forEach(({ image_data, coordinates, area }) => {
                     appendToImageTerminal(image_data, coordinates, area);
                 });
             } catch (error) {
-                console.error('Error fetching fire data:', error);
+                console.error("Error parsing fire data:", error);
             }
-        }
+        };
 
-        // Обновление данных о пожарах каждые 2 секунды
-        setInterval(fetchFireData, 2000);
+        fireDataWS.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
 
-        // Initial load of fire data
-        fetchFireData();
+        fireDataWS.onclose = (event) => {
+            console.log("Fire data WebSocket closed:", event);
+        };
     </script>
 </body>
 

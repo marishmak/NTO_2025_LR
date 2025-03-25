@@ -14,6 +14,7 @@ from PIL import Image
 from pymavlink import mavutil
 from scp import SCPClient
 
+from clusterize import clusterize_coords
 from config import config
 from drone_state import drone_state_repo
 from schemas import (
@@ -302,6 +303,8 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
         while True:
             await asyncio.sleep(0.2)
 
+            current_frames = []
+
             if drone_id == 0 and frames_0:
                 current_frames = frames_0.copy()
                 frames_0.clear()
@@ -324,13 +327,7 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
         print(f"Error in /api/fire-data/{drone_id}:", e)
 
 
-@app.get("/api/get-coords/{drone_id}", response_model=List[Tuple[float, float, float]])
-def get_coords(drone_id: int):
-    if drone_id == 0:
-        return coords_0
-    elif drone_id == 1:
-        return coords_1
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown drone ID"
-        )
+@app.get("/api/get-coords", response_model=List[Tuple[float, float, float]])
+def get_coords():
+    points = coords_0.copy() + coords_1.copy()
+    return clusterize_coords(points, threshold=0.6)

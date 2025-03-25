@@ -180,9 +180,9 @@
     <div class="button-container">
         <button id="startMission">Запуск полетного задания</button>
         <button id="emergencyShutdown" class="emergency">Экстренное выключение</button>
-        <!-- Добавлен класс emergency -->
         <button id="land">Посадка</button>
         <button id="pause">Пауза</button>
+        <button id="getResults">Получить результаты</button>
     </div>
 
     <!-- Контейнер для терминалов -->
@@ -273,20 +273,38 @@
             sendToBackend('land');
         });
 
-        // Добавление обработчика для кнопки "Пауза"
         let isPaused = false; // Флаг для отслеживания состояния паузы
         document.getElementById('pause').addEventListener('click', () => {
             if (isPaused) {
-                // Если пауза активна, возобновляем выполнение
                 sendToBackend('pause');
                 document.getElementById('pause').textContent = 'Пауза';
                 isPaused = false;
             } else {
-                // Если пауза не активна, ставим на паузу
                 sendToBackend('pause');
                 document.getElementById('pause').textContent = 'Возобновить';
                 isPaused = true;
             }
+        });
+
+        document.getElementById('getResults').addEventListener('click', () => {
+            fetch('http://127.0.0.1:8000/api/get-coords')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    let message = "Результаты:\n";
+                    data.forEach(cluster => {
+                        message += `x: ${cluster[0].toFixed(2)} м, y: ${cluster[1].toFixed(2)} м, площадь: ${cluster[2].toFixed(2)} см²\n`;
+                    });
+                    alert(message);
+                })
+                .catch(error => {
+                    console.error("Error fetching results:", error);
+                    alert("Ошибка получения результатов");
+                });
         });
 
         // Глобальные переменные для хранения элементов статуса дронов

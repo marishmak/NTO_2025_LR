@@ -105,6 +105,7 @@ def transform_xyz_yaw(
 ) -> Tuple[float, float, float]:
     point_from = PointStamped()
     point_from.header.frame_id = frame_from
+    point_from.header.stamp = rospy.get_rostime()
     point_from.point.x = x
     point_from.point.y = y
     point_from.point.z = z
@@ -293,16 +294,15 @@ while not rospy.is_shutdown():
         cnt_errors += 1
     rospy.sleep(0.2)
 
-do_recognition = True
 
 #  0->30->31->1->0
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
+do_recognition = True
 navigate_wait(z=1.5, frame_id="aruco_0")
 navigate_wait(z=1.5, frame_id="aruco_30")
 navigate_wait(z=1.5, frame_id="aruco_31")
 navigate_wait(z=1.5, frame_id="aruco_1")
 navigate_wait(z=1.5, frame_id="aruco_0")
-
 do_recognition = False
 
 # SYNC LANDING

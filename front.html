@@ -195,7 +195,7 @@
         document.getElementById('pause').addEventListener('click', () => {
             if (isPaused) {
                 // Если пауза активна, возобновляем выполнение
-                sendToBackend('resume');
+                sendToBackend('pause');
                 document.getElementById('pause').textContent = 'Пауза';
                 isPaused = false;
             } else {

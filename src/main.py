@@ -170,20 +170,6 @@ def check_error(stdout_str: str) -> bool:
 
 
 def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float, float]:
-    # if drone_id == 0:
-    #     connection_str = f"udpin:0.0.0.0:14551@{config.drone_ip0}:{config.drone_mavlink_port0}"
-    # elif drone_id == 1 and config.is_one_drone:
-    #     return -1, -1
-    # else:
-    #     connection_str = f"udpin:0.0.0.0:14551@{config.drone_ip1}:{config.drone_mavlink_port1}"
-    # print(connection_str)
-    # mav = mavutil.mavlink_connection(connection_str)
-    # msg = mav.recv_match(type="SYS_STATUS", blocking=True)
-    # print(msg)
-    # if msg is not None:
-    #     return msg.voltage_battery / 1000, msg.battery_remaining
-    # mav.close()
-    # return -1, -1
     if drone_id == 1 and config.is_one_drone:
         return 0, 0
     try:
@@ -196,7 +182,7 @@ def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float,
         print("STDOUT: ", stdout_str)
         voltage = float(stdout_str.split("\n")[0].split(":")[1].strip())
         percentage = float(stdout_str.split("\n")[1].split(":")[1].strip())
-        return round(voltage, 2), round(percentage, 2)
+        return round(voltage, 2), round(percentage * 100, 2)
     except Exception as e:
         print("ERROR: ", e)
         return 0, 0

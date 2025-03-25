@@ -91,10 +91,10 @@ camera_matrix = np.reshape(np.array(camera_info.K, dtype="float64"), (3, 3))
 dist_coeffs = np.array(camera_info.D, dtype="float64")
 object_point = np.array(
     [
-        (-60 / 2, -60 / 2, 0),  # Bottom-left corner
-        (60 / 2, -60 / 2, 0),  # Bottom-right corner
-        (60 / 2, 60 / 2, 0),  # Top-right corner
-        (-60 / 2, 60 / 2, 0),  # Top-left corner
+        (-0.6 / 2, -0.6 / 2, 0),  # Bottom-left corner
+        (0.6 / 2, -0.6 / 2, 0),  # Bottom-right corner
+        (0.6 / 2, 0.6 / 2, 0),  # Top-right corner
+        (-0.6 / 2, 0.6 / 2, 0),  # Top-left corner
     ]
 )
 counter = 0
@@ -108,16 +108,26 @@ websocket_coords = websocket_connect(
 
 
 def transform_xyz_yaw(
-    x: float, y: float, z: float, frame_from: str, frame_to: str
+    x: float, y: float, z: float, frame_from: str, frame_to: str, curr_time: rospy.Time
 ) -> Tuple[float, float, float]:
     point_from = PointStamped()
     point_from.header.frame_id = frame_from
-    point_from.header.stamp = rospy.get_rostime()
+    point_from.header.stamp = curr_time
     point_from.point.x = x
     point_from.point.y = y
     point_from.point.z = z
     point_to = tf_buffer.transform(point_from, frame_to, rospy.Duration(0.2))
     return point_to.point.x, point_to.point.y, point_to.point.z
+
+
+def polygon_area(points):
+    n = len(points)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += points[i][0] * points[j][1]
+        area -= points[j][0] * points[i][1]
+    return abs(area) / 2.0
 
 
 @long_callback
@@ -127,12 +137,13 @@ def img_callback(msg):
     if not do_recognition:
         return
 
-    # counter += 1
-    # if counter % 5 != 0:
-    #     return
+    counter += 1
+    if counter % 5 != 0:
+        return
 
     try:
         image = bridge.imgmsg_to_cv2(msg, "bgr8")
+        curr_time = rospy.get_rostime()
 
         _, img_encoded = cv2.imencode(".jpg", image)
         websocket_frame.send(img_encoded.tobytes())
@@ -157,21 +168,21 @@ def img_callback(msg):
                 dist_coeffs,
             )
 
+            R, _ = cv2.Rodrigues(rvec)
+
             corner_points = []
             for point in object_point:
-                point_3d = np.array([[point]], dtype="float32")
-                point_2d, _ = cv2.projectPoints(
-                    point_3d, rvec, tvec, camera_matrix, dist_coeffs
-                )
-
-                x_map, y_map, z_map = transform_xyz_yaw(
-                    float(point_2d[0][0][0]),  # X
-                    float(point_2d[0][0][1]),  # Y
-                    float(tvec[2][0]),  # Z (depth)
+                point_cam = (R.dot(point.reshape(3, 1))).flatten() + tvec.flatten()
+                world_pt = transform_xyz_yaw(
+                    point_cam[0],
+                    point_cam[1],
+                    point_cam[2],
                     "main_camera_optical",
                     "aruco_map",
+                    curr_time,
                 )
-                corner_points.append((x_map, y_map, z_map))
+                corner_points.append(world_pt)
+            print(corner_points)
 
             corners_points.append(
                 [
@@ -179,12 +190,7 @@ def img_callback(msg):
                     / 4,  # X CENTER (average of all x coordinates)
                     sum(p[1] for p in corner_points)
                     / 4,  # Y CENTER (average of all y coordinates)
-                    abs(
-                        (corner_points[1][0] - corner_points[0][0])
-                        * 100
-                        * (corner_points[2][1] - corner_points[1][1])
-                        * 100
-                    ),  # AREA (width * height)
+                    polygon_area(corner_points) * 10000,
                 ]
             )
 

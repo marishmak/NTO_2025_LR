@@ -3,7 +3,7 @@ import base64
 import io
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -69,10 +69,15 @@ app.add_middleware(
 
 pid0 = None
 pid1 = None
+coords = []
+frames = []
 
 
 def start(ssh0: SSHClient, ssh1: SSHClient):
-    global pid0, pid1
+    global pid0, pid1, coords, frames
+
+    coords = []
+    frames = []
 
     if pid0 is None:
         scp0 = SCPClient(ssh0.get_transport())
@@ -251,9 +256,6 @@ def update_drone_state(drone_id: int, new_state: DroneState):
     return new_state
 
 
-frames = []
-
-
 @app.websocket("/api/process-frame")
 async def websocket_process_frame(websocket: WebSocket):
     await websocket.accept()
@@ -272,9 +274,6 @@ async def websocket_process_frame(websocket: WebSocket):
         print("Frame WebSocket disconnected")
 
 
-coords = []
-
-
 @app.websocket("/api/process-coords")
 async def websocket_process_coords(websocket: WebSocket):
     await websocket.accept()
@@ -291,30 +290,25 @@ async def websocket_fire_data(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
 
             if frames and coords:
                 current_frames = frames.copy()
-                current_coords = coords.copy()
                 frames.clear()
-                coords.clear()
 
                 fire_data = []
-                for frame, coord in zip(current_frames, current_coords):
+                for frame in current_frames:
                     _, buffer = cv2.imencode(".png", frame)
                     image_data = base64.b64encode(buffer).decode("utf-8")
-
-                    x_center, y_center, area = coord
-                    fire_data.append(
-                        {
-                            "image_data": image_data,
-                            "coordinates": (x_center, y_center),
-                            "area": area,
-                        }
-                    )
+                    fire_data.append({"image_data": image_data})
 
                 await websocket.send_json(fire_data)
     except WebSocketDisconnect:
         print("Fire data WebSocket disconnected")
     except Exception as e:
-        print("Error in /ws/fire-data:", e)
+        print("Error in /api/fire-data:", e)
+
+
+@app.get("/api/get-coords", response_model=List[Tuple[float, float, float]])
+def get_coords():
+    return coords

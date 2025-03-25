@@ -213,20 +213,10 @@
         }
 
         // Функция для добавления изображений и информации в терминал изображений
-        function appendToImageTerminal(imageData, coordinates, area) {
+        function appendToImageTerminal(imageData) {
             const imageTerminal = document.getElementById('imageTerminal');
-
-            // Создаем контейнер для изображения и информации
-            const container = document.createElement('div');
-            container.innerHTML = `
-                <img src="data:image/png;base64,${imageData}" alt="Изображение возгорания">
-                <p>Координаты: ${coordinates}</p>
-                <p>Площадь возгорания: ${area} см²</p>
-            `;
-            imageTerminal.appendChild(container);
-
-            // Прокручиваем терминал вниз
-            imageTerminal.scrollTop = imageTerminal.scrollHeight;
+            // Заменяем текущий контент новым изображением
+            imageTerminal.innerHTML = `<img src="data:image/png;base64,${imageData}" alt="Изображение возгорания">`;
         }
 
         // Обработчики событий для кнопок
@@ -333,37 +323,49 @@
         fetchDroneStatus();
 
         // Функция для получения данных о пожарах
-        const fireDataWS = new WebSocket("ws://127.0.0.1:8000/api/fire-data");
+        function connectFireDataWS() {
+            const ws = new WebSocket("ws://127.0.0.1:8000/api/fire-data");
 
-        fireDataWS.onopen = () => {
-            console.log("Connected to fire data WebSocket");
-        };
+            ws.onopen = () => {
+                console.log("Connected to fire data WebSocket");
+            };
 
-        fireDataWS.onmessage = (event) => {
-            try {
-                // Parse the received JSON data (an array of fire data objects)
-                const fireDataArray = JSON.parse(event.data);
-                const imageTerminal = document.getElementById('imageTerminal');
-                
-                // Optionally clear existing images (if you want to replace old frames)
-                imageTerminal.innerHTML = '';
+            ws.onmessage = (event) => {
+                try {
+                    // Parse the received JSON data (an array of fire data objects)
+                    const fireDataArray = JSON.parse(event.data);
+                    const imageTerminal = document.getElementById('imageTerminal');
 
-                // Append each fire data object to the image terminal
-                fireDataArray.forEach(({ image_data, coordinates, area }) => {
-                    appendToImageTerminal(image_data, coordinates, area);
-                });
-            } catch (error) {
-                console.error("Error parsing fire data:", error);
-            }
-        };
+                    // Optionally clear existing images (if you want to replace old frames)
+                    imageTerminal.innerHTML = '';
 
-        fireDataWS.onerror = (error) => {
-            console.error("WebSocket error:", error);
-        };
+                    // Append each fire data object to the image terminal
+                    fireDataArray.forEach(({ image_data }) => {
+                        appendToImageTerminal(image_data);
+                    });
+                } catch (error) {
+                    console.error("Error parsing fire data:", error);
+                }
+            };
 
-        fireDataWS.onclose = (event) => {
-            console.log("Fire data WebSocket closed:", event);
-        };
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+            };
+
+            ws.onclose = (event) => {
+                console.log("Fire data WebSocket closed:", event);
+                // Attempt to reconnect after a 2-second delay
+                setTimeout(() => {
+                    console.log("Reconnecting to fire data WebSocket...");
+                    fireDataWS = connectFireDataWS();
+                }, 2000);
+            };
+
+            return ws;
+        }
+
+        // Initialize the WebSocket connection
+        let fireDataWS = connectFireDataWS();
     </script>
 </body>
 

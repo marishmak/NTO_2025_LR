@@ -1,12 +1,23 @@
 import math
+import sys
+from io import BytesIO
 from threading import Thread
+from typing import Tuple
 
+import cv2
+import numpy as np
 import requests
 import rospy
-from clover import srv
+from clover import long_callback, srv
+from cv_bridge import CvBridge
 from mavros_msgs.srv import CommandBool
 from pymavlink import mavutil
+from sensor_msgs.msg import CameraInfo, Image
 from std_srvs.srv import Trigger
+from tf2_geometry_msgs import PointStamped
+from tf2_ros import Buffer, TransformListener
+
+sys.stdout = open("flight0.log", "w")
 
 rospy.init_node("flight0")
 
@@ -25,8 +36,10 @@ land = rospy.ServiceProxy("land", Trigger)
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 
-API_BASEURL = "http://192.168.2.164:8000/api"
-# API_BASEURL = "http://192.168.0.30:8000/api"
+# API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
+# API_BASEURL = "http://192.168.2.164:8000/api"
+API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
+# API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False
 INTERRUPT = False
@@ -68,12 +81,144 @@ status_listener_thread = Thread(target=listen_for_status_text, daemon=True)
 status_listener_thread.start()
 
 
+bridge = CvBridge()
+tf_buffer = Buffer()
+tf_listener = TransformListener(tf_buffer)
+# read camera info
+camera_info = rospy.wait_for_message("main_camera/camera_info", CameraInfo)
+camera_matrix = np.reshape(np.array(camera_info.K, dtype="float64"), (3, 3))
+dist_coeffs = np.array(camera_info.D, dtype="float64")
+object_point = np.array(
+    [
+        (-90 / 2, -60 / 2, 0),  # Bottom-left corner  (-45, -30, 0)
+        (90 / 2, -60 / 2, 0),  # Bottom-right corner (45, -30, 0)
+        (90 / 2, 60 / 2, 0),  # Top-right corner    (45, 30, 0)
+        (-90 / 2, 60 / 2, 0),  # Top-left corner     (-45, 30, 0)
+    ]
+)
+counter = 0
+do_recognition = False
+
+
+def transform_xyz_yaw(
+    x: float, y: float, z: float, frame_from: str, frame_to: str
+) -> Tuple[float, float, float]:
+    point_from = PointStamped()
+    point_from.header.frame_id = frame_from
+    point_from.point.x = x
+    point_from.point.y = y
+    point_from.point.z = z
+    point_to = tf_buffer.transform(point_from, frame_to, rospy.Duration(0.2))
+    return point_to.point.x, point_to.point.y, point_to.point.z
+
+
+@long_callback
+def img_callback(msg):
+    global counter, do_recognition
+
+    if not do_recognition:
+        return
+
+    counter += 1
+    if counter % 5 != 0:
+        return
+
+    try:
+        image = bridge.imgmsg_to_cv2(msg, "bgr8")
+
+        _, img_encoded = cv2.imencode(".jpg", image)
+        resp = requests.post(
+            f"{API_BASEURL}/process-frame",
+            files={"file": ("image.jpg", BytesIO(img_encoded), "image/jpeg")},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            rospy.loginfo(f"Error processing frame: {resp.status_code}")
+            return
+        coords = resp.json()
+        rospy.loginfo(f"Coords: {coords}")
+
+        corners_points = []
+        for coord in coords:
+            _, rvec, tvec = cv2.solvePnP(
+                np.array(object_point, dtype="float32"),
+                np.array(
+                    [
+                        (coord[0], coord[1] + coord[3]),
+                        (coord[0] + coord[2], coord[1] + coord[3]),
+                        (coord[0] + coord[2], coord[1]),
+                        (coord[0], coord[1]),
+                    ],
+                    dtype="float32",
+                ),
+                camera_matrix,
+                dist_coeffs,
+            )
+
+            corner_points = []
+            for point in object_point:
+                point_3d = np.array([[point]], dtype="float32")
+                point_2d, _ = cv2.projectPoints(
+                    point_3d, rvec, tvec, camera_matrix, dist_coeffs
+                )
+
+                x_map, y_map, z_map = transform_xyz_yaw(
+                    float(point_2d[0][0][0]),  # X
+                    float(point_2d[0][0][1]),  # Y
+                    float(tvec[2][0]),  # Z (depth)
+                    "main_camera_optical",
+                    "aruco_map",
+                )
+                corner_points.append((x_map, y_map, z_map))
+
+            corner_points = [
+                (2.3, 3.4, 0.1),
+                (3.4, 2.3, 0.1),
+                (3.3, 3.4, 0.1),
+                (3.4, 3.3, 0.1),
+            ]
+
+            corners_points.append(
+                [
+                    sum(p[0] for p in corner_points)
+                    / 4,  # X CENTER (average of all x coordinates)
+                    sum(p[1] for p in corner_points)
+                    / 4,  # Y CENTER (average of all y coordinates)
+                    abs(
+                        (corner_points[1][0] - corner_points[0][0])
+                        * 100
+                        * (corner_points[2][1] - corner_points[1][1])
+                        * 100
+                    ),  # AREA (width * height)
+                ]
+            )
+
+        rospy.loginfo(f"Corners points: {corners_points}")
+
+        requests.post(
+            f"{API_BASEURL}/process-coords",
+            json={"coords": corners_points},
+            timeout=10,
+        )
+    except Exception as e:
+        rospy.loginfo(f"Error processing frame: {e}")
+
+
+image_sub = rospy.Subscriber(
+    "main_camera/image_raw",
+    Image,
+    img_callback,
+    queue_size=10,
+    buff_size=320 * 240 * 3 * 50,
+)
+
+
 def navigate_wait(
     x: float = 0,
     y: float = 0,
     z: float = 0,
     yaw: float = float("nan"),
-    speed: float = 0.3,
+    speed: float = 0.2,
     frame_id: str = "",
     auto_arm: bool = False,
     tolerance: float = 0.2,
@@ -128,17 +273,53 @@ def land_wait():
         rospy.sleep(0.2)
 
 
-#  0->25->26->1->0
+# SYNC STARTING
+try:
+    rospy.loginfo("Setting state to ready to start")
+    requests.post(
+        f"{API_BASEURL}/state/0",
+        json={"ready_to_start": True, "ready_to_land": False},
+        timeout=10,
+    )
+except Exception as e:
+    rospy.loginfo(f"Error setting state: {e}")
+
+cnt_errors = 0
+rospy.loginfo("Waiting for drone 1 to be ready to start")
+while not rospy.is_shutdown():
+    if cnt_errors > 3:
+        rospy.loginfo("Drone 1 is not ready to start, breaking")
+        break
+    try:
+        r = requests.get(f"{API_BASEURL}/state/1", timeout=3)
+        r.raise_for_status()
+        if r.json()["ready_to_start"]:
+            break
+    except Exception as e:
+        rospy.loginfo(f"Error getting state: {e}")
+        cnt_errors += 1
+    rospy.sleep(0.2)
+
+do_recognition = True
+
+#  0->30->31->1->0
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
 navigate_wait(z=1.5, frame_id="aruco_0")
-navigate_wait(z=1.5, frame_id="aruco_25")
-navigate_wait(z=1.5, frame_id="aruco_26")
+navigate_wait(z=1.5, frame_id="aruco_30")
+navigate_wait(z=1.5, frame_id="aruco_31")
 navigate_wait(z=1.5, frame_id="aruco_1")
 navigate_wait(z=1.5, frame_id="aruco_0")
 
+do_recognition = False
+
+# SYNC LANDING
 try:
     rospy.loginfo("Setting state to ready to land")
-    requests.post(f"{API_BASEURL}/state/0", json={"ready_to_land": True})
+    requests.post(
+        f"{API_BASEURL}/state/0",
+        json={"ready_to_start": False, "ready_to_land": True},
+        timeout=10,
+    )
 except Exception as e:
     rospy.loginfo(f"Error setting state: {e}")
 
@@ -161,6 +342,10 @@ while not rospy.is_shutdown():
 land_wait()
 
 try:
-    requests.post(f"{API_BASEURL}/state/0", json={"ready_to_land": False})
+    requests.post(
+        f"{API_BASEURL}/state/0",
+        json={"ready_to_start": False, "ready_to_land": False},
+        timeout=10,
+    )
 except Exception as e:
     rospy.loginfo(f"Error setting final state: {e}")

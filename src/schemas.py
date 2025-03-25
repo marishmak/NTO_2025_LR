@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import List, Tuple
 
 from pydantic import BaseModel
 
@@ -26,4 +27,15 @@ class Status(BaseModel):
 
 
 class DroneState(BaseModel):
+    ready_to_start: bool
     ready_to_land: bool
+
+
+class ImageCoord(BaseModel):
+    coords: List[Tuple[float, float, float]]
+
+
+class FireData(BaseModel):
+    image_data: str
+    coordinates: Tuple[float, float]
+    area: float

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,6 +36,7 @@
             from {
                 text-shadow: 0 0 10px #c9d8ca, 0 0 20px #9fcb9c;
             }
+
             to {
                 text-shadow: 0 0 20px #2c6d3d, 0 0 30px #004e16;
             }
@@ -69,41 +71,64 @@
         }
 
         button.emergency {
-            background: linear-gradient(135deg, #c1271c, #ba000d); /* Красный градиент */
+            background: linear-gradient(135deg, #c1271c, #ba000d);
+            /* Красный градиент */
         }
 
         button:active {
             transform: scale(0.95);
         }
 
-        /* Терминал */
-        .terminal {
+        /* Контейнер для терминалов */
+        .terminal-container {
+            display: flex;
+            gap: 20px;
+            width: 90%;
+            max-width: 1600px;
+            /* Максимальная ширина для двух терминалов */
+            margin-top: 20px;
+        }
+
+        /* Общие стили для терминалов */
+        .terminal,
+        .image-terminal {
+            flex: 1;
+            /* Равномерное распределение ширины */
             background: rgba(0, 0, 0, 0.7);
             color: #00ff00;
-            width: 90%;
-            max-width: 800px;
             height: 300px;
             overflow-y: auto;
             padding: 15px;
             border-radius: 10px;
-            margin-top: 20px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
             font-family: 'Courier New', Courier, monospace;
             font-size: 1rem;
             line-height: 1.5;
         }
 
-        .terminal::-webkit-scrollbar {
+        .terminal::-webkit-scrollbar,
+        .image-terminal::-webkit-scrollbar {
             width: 8px;
         }
 
-        .terminal::-webkit-scrollbar-thumb {
+        .terminal::-webkit-scrollbar-thumb,
+        .image-terminal::-webkit-scrollbar-thumb {
             background: #00ff00;
             border-radius: 5px;
         }
 
-        .terminal::-webkit-scrollbar-track {
+        .terminal::-webkit-scrollbar-track,
+        .image-terminal::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Стиль для изображений */
+        .image-terminal img {
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 10px;
+            border: 2px solid #00ff00;
+            border-radius: 5px;
         }
 
         /* Статус дронов */
@@ -126,6 +151,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- Заголовок -->
     <h1>FlyingGOAT</h1>
@@ -133,14 +159,23 @@
     <!-- Контейнер с кнопками -->
     <div class="button-container">
         <button id="startMission">Запуск полетного задания</button>
-        <button id="emergencyShutdown" class="emergency">Экстренное выключение</button> <!-- Добавлен класс emergency -->
+        <button id="emergencyShutdown" class="emergency">Экстренное выключение</button>
+        <!-- Добавлен класс emergency -->
         <button id="land">Посадка</button>
         <button id="pause">Пауза</button>
     </div>
 
-    <!-- Терминал статуса -->
-    <div class="terminal" id="statusTerminal">
-        <!-- Здесь будет выводиться текст -->
+    <!-- Контейнер для терминалов -->
+    <div class="terminal-container">
+        <!-- Терминал статуса -->
+        <div class="terminal" id="statusTerminal">
+            <!-- Здесь будет выводиться текст -->
+        </div>
+
+        <!-- Терминал для изображений -->
+        <div class="image-terminal" id="imageTerminal">
+            <!-- Здесь будут выводиться изображения и информация -->
+        </div>
     </div>
 
     <!-- Статус дронов -->
@@ -170,11 +205,28 @@
             }
         }
 
-        // Функция для добавления текста в терминал
+        // Функция для добавления текста в текстовый терминал
         function appendToTerminal(message) {
             const terminal = document.getElementById('statusTerminal');
             terminal.innerHTML += message + '<br>';
             terminal.scrollTop = terminal.scrollHeight; // Автопрокрутка вниз
+        }
+
+        // Функция для добавления изображений и информации в терминал изображений
+        function appendToImageTerminal(imageData, coordinates, area) {
+            const imageTerminal = document.getElementById('imageTerminal');
+
+            // Создаем контейнер для изображения и информации
+            const container = document.createElement('div');
+            container.innerHTML = `
+                <img src="data:image/png;base64,${imageData}" alt="Изображение возгорания">
+                <p>Координаты: ${coordinates}</p>
+                <p>Площадь возгорания: ${area} см²</p>
+            `;
+            imageTerminal.appendChild(container);
+
+            // Прокручиваем терминал вниз
+            imageTerminal.scrollTop = imageTerminal.scrollHeight;
         }
 
         // Обработчики событий для кнопок
@@ -260,7 +312,7 @@
             } catch (error) {
                 console.error('Error fetching drone statuses:', error);
 
-                // Если произошла ошибка, устанавливаем статус "✘" для всех дронов
+                // If an error occurs, set default statuses for all drones
                 for (let droneId = 0; droneId < 2; droneId++) {
                     const droneElement = droneElements[droneId];
                     droneElement.connection.textContent = '✘';
@@ -271,14 +323,44 @@
             }
         }
 
-        // Инициализация статусов дронов
+        // Initialize drone statuses
         initializeDroneStatus();
 
-        // Обновление статусов каждые 15 секунд
+        // Update statuses every 15 seconds
         setInterval(fetchDroneStatus, 15000);
 
-        // Первичная загрузка статусов
+        // Initial load of statuses
         fetchDroneStatus();
+
+        // Функция для получения данных о пожарах
+        async function fetchFireData() {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/fire-data');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const fireData = await response.json();
+
+                // Очищаем терминал изображений перед добавлением новых данных
+                const imageTerminal = document.getElementById('imageTerminal');
+                imageTerminal.innerHTML = '';
+
+                // Добавляем новые данные
+                fireData.forEach(({ image_data, coordinates, area }) => {
+                    appendToImageTerminal(image_data, coordinates, area);
+                });
+            } catch (error) {
+                console.error('Error fetching fire data:', error);
+            }
+        }
+
+        // Обновление данных о пожарах каждые 2 секунды
+        setInterval(fetchFireData, 2000);
+
+        // Initial load of fire data
+        fetchFireData();
     </script>
 </body>
+
 </html>

@@ -1,16 +1,30 @@
+import base64
+import io
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
-from fastapi import FastAPI, HTTPException, status
+import cv2
+import numpy as np
+from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from paramiko import SSHClient
+from PIL import Image
 from pymavlink import mavutil
 from scp import SCPClient
 
 from config import config
 from drone_state import drone_state_repo
-from schemas import Action, ButtonAction, DroneState, Message, Status
+from schemas import (
+    Action,
+    ButtonAction,
+    DroneState,
+    FireData,
+    ImageCoord,
+    Message,
+    Status,
+)
+from vision import main_fire_detection
 
 dir_path = Path(__file__).parent.parent
 
@@ -174,7 +188,7 @@ def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float,
         return 0, 0
     try:
         _, stdout, _ = (ssh0 if drone_id == 0 else ssh1).exec_command(
-            'bash -ic "rostopic echo /mavros/battery -n 1 | grep -e \"^voltage\" -e \"^percentage\""',
+            'bash -ic "rostopic echo /mavros/battery -n 1 | grep -e "^voltage" -e "^percentage""',
             timeout=10,
             get_pty=True,
         )
@@ -234,3 +248,51 @@ def get_drone_state(drone_id: int):
 def update_drone_state(drone_id: int, new_state: DroneState):
     drone_state_repo.update_state(drone_id, new_state)
     return new_state
+
+
+frames = []
+
+
+@app.post("/api/process-frame", response_model=List[Tuple[int, int, int, int]])
+async def process_image(file: UploadFile = File(...)):
+    global frames
+    image_data = await file.read()
+    pil_image = Image.open(io.BytesIO(image_data))
+    image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+    final_img, coordinates = main_fire_detection(image)
+    frames.append(final_img)
+    return coordinates
+
+
+coords = []
+
+
+@app.post("/api/process-coords")
+def process_coords(coord: ImageCoord):
+    global coords
+    # x y area
+    coords.extend(coord.coords)
+
+
+@app.get("/api/fire-data")
+def get_fire_data() -> List[FireData]:
+    global frames, coords
+
+    fire_data = []
+
+    for frame, coord in zip(frames, coords):
+        _, buffer = cv2.imencode(".png", frame)
+        image_data = base64.b64encode(buffer).decode("utf-8")
+
+        x_center, y_center, area = coord
+
+        fire_data.append(
+            FireData(
+                image_data=image_data,
+                coordinates=(x_center, y_center),
+                area=area,
+            )
+        )
+
+    return fire_data

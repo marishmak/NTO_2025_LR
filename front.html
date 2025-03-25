@@ -190,8 +190,20 @@
             sendToBackend('land');
         });
 
+        // Добавление обработчика для кнопки "Пауза"
+        let isPaused = false; // Флаг для отслеживания состояния паузы
         document.getElementById('pause').addEventListener('click', () => {
-            sendToBackend('pause');
+            if (isPaused) {
+                // Если пауза активна, возобновляем выполнение
+                sendToBackend('resume');
+                document.getElementById('pause').textContent = 'Пауза';
+                isPaused = false;
+            } else {
+                // Если пауза не активна, ставим на паузу
+                sendToBackend('pause');
+                document.getElementById('pause').textContent = 'Возобновить';
+                isPaused = true;
+            }
         });
 
         // Глобальные переменные для хранения элементов статуса дронов
@@ -216,23 +228,31 @@
 
         // Функция для обновления статуса дронов
         async function fetchDroneStatus() {
-            for (let droneId = 0; droneId < 2; droneId++) {
-                try {
-                    const response = await fetch(`http://127.0.0.1:8000/api/status/${droneId}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+            try {
+                // Создаем массив промисов для запросов к двум дронам
+                const droneRequests = [0, 1].map(droneId =>
+                    fetch(`http://127.0.0.1:8000/api/status/${droneId}`).then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                );
 
-                    const status = await response.json();
+                // Выполняем все запросы параллельно
+                const statuses = await Promise.all(droneRequests);
 
-                    // Обновляем текст в существующих элементах
+                // Обновляем статусы дронов
+                statuses.forEach((status, droneId) => {
                     const droneElement = droneElements[droneId];
                     droneElement.connection.textContent = status.connection ? '✔' : '✘';
                     droneElement.readiness.textContent = status.readiness ? '✔' : '✘';
-                } catch (error) {
-                    console.error(`Error fetching status for drone ${droneId}:`, error);
+                });
+            } catch (error) {
+                console.error('Error fetching drone statuses:', error);
 
-                    // Если ошибка, устанавливаем статус "✘"
+                // Если произошла ошибка, устанавливаем статус "✘" для всех дронов
+                for (let droneId = 0; droneId < 2; droneId++) {
                     const droneElement = droneElements[droneId];
                     droneElement.connection.textContent = '✘';
                     droneElement.readiness.textContent = '✘';
@@ -243,7 +263,7 @@
         // Инициализация статусов дронов
         initializeDroneStatus();
 
-        // Обновление статусов каждые 30 секунд
+        // Обновление статусов каждые 15 секунд
         setInterval(fetchDroneStatus, 15000);
 
         // Первичная загрузка статусов

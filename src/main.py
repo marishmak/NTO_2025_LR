@@ -69,15 +69,19 @@ app.add_middleware(
 
 pid0 = None
 pid1 = None
-coords = []
-frames = []
+coords_0 = []
+frames_0 = []
+coords_1 = []
+frames_1 = []
 
 
 def start(ssh0: SSHClient, ssh1: SSHClient):
-    global pid0, pid1, coords, frames
+    global pid0, pid1, coords_0, frames_0, coords_1, frames_1
 
-    coords = []
-    frames = []
+    coords_0 = []
+    frames_0 = []
+    coords_1 = []
+    frames_1 = []
 
     if pid0 is None:
         scp0 = SCPClient(ssh0.get_transport())
@@ -256,8 +260,8 @@ def update_drone_state(drone_id: int, new_state: DroneState):
     return new_state
 
 
-@app.websocket("/api/process-frame")
-async def websocket_process_frame(websocket: WebSocket):
+@app.websocket("/api/process-frame/{drone_id}")
+async def websocket_process_frame(websocket: WebSocket, drone_id: int):
     await websocket.accept()
     try:
         while True:
@@ -267,35 +271,46 @@ async def websocket_process_frame(websocket: WebSocket):
             image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
             final_img, coordinates, _ = main_fire_detection(image)
 
-            frames.append(final_img)
+            if drone_id == 0:
+                frames_0.append(final_img)
+            elif drone_id == 1:
+                frames_1.append(final_img)
 
             await websocket.send_json({"coordinates": coordinates})
     except WebSocketDisconnect:
-        print("Frame WebSocket disconnected")
+        print(f"Frame WebSocket disconnected for drone {drone_id}")
 
 
-@app.websocket("/api/process-coords")
-async def websocket_process_coords(websocket: WebSocket):
+@app.websocket("/api/process-coords/{drone_id}")
+async def websocket_process_coords(websocket: WebSocket, drone_id: int):
     await websocket.accept()
     try:
         while True:
             data = await websocket.receive_json()
-            coords.extend(data["coords"])
+            if drone_id == 0:
+                coords_0.extend(data["coords"])
+            elif drone_id == 1:
+                coords_1.extend(data["coords"])
     except WebSocketDisconnect:
-        print("Coords WebSocket disconnected")
+        print(f"Coords WebSocket disconnected for drone {drone_id}")
 
 
-@app.websocket("/api/fire-data")
-async def websocket_fire_data(websocket: WebSocket):
+@app.websocket("/api/fire-data/{drone_id}")
+async def websocket_fire_data(websocket: WebSocket, drone_id: int):
     await websocket.accept()
     try:
         while True:
             await asyncio.sleep(0.2)
 
-            if frames and coords:
-                current_frames = frames.copy()
-                frames.clear()
+            if drone_id == 0 and frames_0:
+                current_frames = frames_0.copy()
+                frames_0.clear()
 
+            if drone_id == 1 and frames_1:
+                current_frames = frames_1.copy()
+                frames_1.clear()
+
+            if current_frames:
                 fire_data = []
                 for frame in current_frames:
                     _, buffer = cv2.imencode(".png", frame)
@@ -304,11 +319,18 @@ async def websocket_fire_data(websocket: WebSocket):
 
                 await websocket.send_json(fire_data)
     except WebSocketDisconnect:
-        print("Fire data WebSocket disconnected")
+        print(f"Fire data WebSocket disconnected for drone {drone_id}")
     except Exception as e:
-        print("Error in /api/fire-data:", e)
+        print(f"Error in /api/fire-data/{drone_id}:", e)
 
 
-@app.get("/api/get-coords", response_model=List[Tuple[float, float, float]])
-def get_coords():
-    return coords
+@app.get("/api/get-coords/{drone_id}", response_model=List[Tuple[float, float, float]])
+def get_coords(drone_id: int):
+    if drone_id == 0:
+        return coords_0
+    elif drone_id == 1:
+        return coords_1
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown drone ID"
+        )

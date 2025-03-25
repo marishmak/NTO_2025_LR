@@ -27,6 +27,7 @@
             letter-spacing: 2px;
             margin-bottom: 20px;
             background: linear-gradient(45deg, #566354, #1f3e28);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             animation: glow 2s infinite alternate;
@@ -104,6 +105,9 @@
             font-family: 'Courier New', Courier, monospace;
             font-size: 1rem;
             line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .terminal::-webkit-scrollbar,
@@ -124,11 +128,27 @@
 
         /* Стиль для изображений */
         .image-terminal img {
+            display: block;
             max-width: 100%;
             height: auto;
-            margin-bottom: 10px;
+            margin: 0 auto 10px;
             border: 2px solid #00ff00;
             border-radius: 5px;
+        }
+
+        .image-terminals {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex: 1;
+        }
+
+        .drone-label {
+            text-align: center;
+            padding: 10px 0;
+            font-size: 1.2rem;
+            color: white;
+            margin-top: 10px;
         }
 
         /* Статус дронов */
@@ -172,9 +192,24 @@
             <!-- Здесь будет выводиться текст -->
         </div>
 
-        <!-- Терминал для изображений -->
-        <div class="image-terminal" id="imageTerminal">
-            <!-- Здесь будут выводиться изображения и информация -->
+        <!-- Контейнер для терминалов изображений с двумя панелями -->
+        <div class="image-terminals">
+            <div class="image-terminal" id="imageTerminal0">
+                <!-- Placeholder for drone 0 -->
+                <div
+                    style="width: 320px; height: 240px; background-color: black; display: flex; align-items: center; justify-content: center;">
+                    <span style="color: white; font-size: 1.5rem;">Ожидаю данных</span>
+                </div>
+                <div class="drone-label">Дрон 0</div>
+            </div>
+            <div class="image-terminal" id="imageTerminal1">
+                <!-- Placeholder for drone 1 -->
+                <div
+                    style="width: 320px; height: 240px; background-color: black; display: flex; align-items: center; justify-content: center;">
+                    <span style="color: white; font-size: 1.5rem;">Ожидаю данных</span>
+                </div>
+                <div class="drone-label">Дрон 1</div>
+            </div>
         </div>
     </div>
 
@@ -213,10 +248,16 @@
         }
 
         // Функция для добавления изображений и информации в терминал изображений
-        function appendToImageTerminal(imageData) {
-            const imageTerminal = document.getElementById('imageTerminal');
-            // Заменяем текущий контент новым изображением
-            imageTerminal.innerHTML = `<img src="data:image/png;base64,${imageData}" alt="Изображение возгорания">`;
+        function appendToImageTerminal(imageData, terminalId) {
+            const imageTerminal = document.getElementById(terminalId);
+            const numberId = terminalId.split('imageTerminal')[1];
+            if (imageData && imageData.trim()) {
+                imageTerminal.innerHTML = `<img src="data:image/png;base64,${imageData}" alt="Изображение возгорания">` + `<div class="drone-label">Дрон ${numberId}</div>`;
+            } else {
+                imageTerminal.innerHTML = `<div style="width: 320px; height: 240px; background-color: black; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 1.5rem;">Ожидаю данных</span>
+            </div>` + `<div class="drone-label">Дрон ${numberId}</div>`;
+            }
         }
 
         // Обработчики событий для кнопок
@@ -323,49 +364,49 @@
         fetchDroneStatus();
 
         // Функция для получения данных о пожарах
-        function connectFireDataWS() {
-            const ws = new WebSocket("ws://127.0.0.1:8000/api/fire-data");
-
+        function connectFireDataWS(drone_id) {
+            const terminalId = `imageTerminal${drone_id}`;
+            const ws = new WebSocket(`ws://127.0.0.1:8000/api/fire-data/${drone_id}`);
             ws.onopen = () => {
-                console.log("Connected to fire data WebSocket");
+                console.log(`Connected to fire data WebSocket for drone ${drone_id}`);
+                appendToImageTerminal(null, terminalId);
             };
-
             ws.onmessage = (event) => {
                 try {
-                    // Parse the received JSON data (an array of fire data objects)
+                    // Предполагается, что сервер отправляет массив объектов с данным изображением
                     const fireDataArray = JSON.parse(event.data);
-                    const imageTerminal = document.getElementById('imageTerminal');
-
-                    // Optionally clear existing images (if you want to replace old frames)
-                    imageTerminal.innerHTML = '';
-
-                    // Append each fire data object to the image terminal
-                    fireDataArray.forEach(({ image_data }) => {
-                        appendToImageTerminal(image_data);
-                    });
+                    if (fireDataArray.length > 0) {
+                        // Выбираем первое изображение (при необходимости можно изменить логику)
+                        appendToImageTerminal(fireDataArray[0].image_data, terminalId);
+                    }
                 } catch (error) {
                     console.error("Error parsing fire data:", error);
+                    appendToImageTerminal(null, terminalId);
                 }
             };
-
             ws.onerror = (error) => {
-                console.error("WebSocket error:", error);
+                console.error(`WebSocket error for drone ${drone_id}:`, error);
+                appendToImageTerminal(null, terminalId);
             };
-
             ws.onclose = (event) => {
-                console.log("Fire data WebSocket closed:", event);
-                // Attempt to reconnect after a 2-second delay
+                console.log(`Fire data WebSocket closed for drone ${drone_id}:`, event);
+                appendToImageTerminal(null, terminalId);
+                // Попытка переподключения через 2 секунды
                 setTimeout(() => {
-                    console.log("Reconnecting to fire data WebSocket...");
-                    fireDataWS = connectFireDataWS();
+                    console.log(`Reconnecting to fire data WebSocket for drone ${drone_id}...`);
+                    if (drone_id === 0) {
+                        fireDataWS0 = connectFireDataWS(0);
+                    } else {
+                        fireDataWS1 = connectFireDataWS(1);
+                    }
                 }, 2000);
             };
-
             return ws;
         }
 
-        // Initialize the WebSocket connection
-        let fireDataWS = connectFireDataWS();
+        // Инициализируем два WebSocket-соединения:
+        let fireDataWS0 = connectFireDataWS(0);
+        let fireDataWS1 = connectFireDataWS(1);
     </script>
 </body>
 

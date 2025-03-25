@@ -117,10 +117,10 @@ object_point_90_90 = np.array(
 counter = 0
 do_recognition = False
 websocket_frame = websocket_connect(
-    f"{API_BASEURL.replace('http', 'ws')}/process-frame"
+    f"{API_BASEURL.replace('http', 'ws')}/process-frame/0"
 )
 websocket_coords = websocket_connect(
-    f"{API_BASEURL.replace('http', 'ws')}/process-coords"
+    f"{API_BASEURL.replace('http', 'ws')}/process-coords/0"
 )
 
 

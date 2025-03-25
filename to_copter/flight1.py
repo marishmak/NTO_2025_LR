@@ -25,6 +25,7 @@ land = rospy.ServiceProxy("land", Trigger)
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 API_BASEURL = "http://192.168.2.164:8000/api"
+# API_BASEURL = "http://192.168.0.30:8000/api"
 
 LAND = False
 INTERRUPT = False

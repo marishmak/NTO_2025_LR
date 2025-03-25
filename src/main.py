@@ -232,11 +232,13 @@ def get_status(drone_id: int):
     )
 
 
-@app.post("/api/reset_pids")
-def reset_pids():
+@app.post("/api/reset_pids/{drone_id}")
+def reset_pids(drone_id: int):
     global pid0, pid1
-    pid0 = None
-    pid1 = None
+    if drone_id == 0:
+        pid0 = None
+    elif drone_id == 1:
+        pid1 = None
 
 
 @app.get("/api/state/{drone_id}", response_model=DroneState)
@@ -260,7 +262,7 @@ async def process_image(file: UploadFile = File(...)):
     pil_image = Image.open(io.BytesIO(image_data))
     image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
-    final_img, coordinates = main_fire_detection(image)
+    final_img, coordinates, _ = main_fire_detection(image)
     frames.append(final_img)
     return coordinates
 

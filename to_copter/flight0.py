@@ -38,8 +38,8 @@ arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 # API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
 # API_BASEURL = "http://192.168.2.164:8000/api"
-API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
-# API_BASEURL = "http://127.0.0.1:8000/api"
+# API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
+API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False
 INTERRUPT = False
@@ -171,13 +171,6 @@ def img_callback(msg):
                 )
                 corner_points.append((x_map, y_map, z_map))
 
-            corner_points = [
-                (2.3, 3.4, 0.1),
-                (3.4, 2.3, 0.1),
-                (3.3, 3.4, 0.1),
-                (3.4, 3.3, 0.1),
-            ]
-
             corners_points.append(
                 [
                     sum(p[0] for p in corner_points)
@@ -205,7 +198,7 @@ def img_callback(msg):
 
 
 image_sub = rospy.Subscriber(
-    "main_camera/image_raw",
+    "main_camera/image_raw_throttled",
     Image,
     img_callback,
     queue_size=10,
@@ -347,5 +340,6 @@ try:
         json={"ready_to_start": False, "ready_to_land": False},
         timeout=10,
     )
+    requests.post(f"{API_BASEURL}/reset_pids/0", timeout=10)
 except Exception as e:
     rospy.loginfo(f"Error setting final state: {e}")

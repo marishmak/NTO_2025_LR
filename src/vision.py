@@ -4,6 +4,9 @@ import cv2
 import numpy as np
 
 
+crop_percent = 20
+
+
 def crop_center(image, percent):
     h, w = image.shape[:2]
     crop_width = int(w * percent / 100)
@@ -79,26 +82,42 @@ def contour(fire_mask, image) -> Tuple[np.ndarray, List[Tuple[int, int, int, int
         pixel_area = cv2.contourArea(contour)
         if pixel_area > 500:
             x, y, w, h = cv2.boundingRect(contour)
-            coordinates.append((x, y, w, h))
 
-            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            text = "Fire"
-            cv2.putText(
-                image, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2
-            )
+            center_x = x + w // 2
+            center_y = y + h // 2
+
+            if (
+                center_x >= crop_percent * image.shape[1] / 100
+                and center_x <= (100 - crop_percent) * image.shape[1] / 100
+                and center_y >= crop_percent * image.shape[0] / 100
+                and center_y <= (100 - crop_percent) * image.shape[0] / 100
+            ):
+                coordinates.append((x, y, w, h))
+
+                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.circle(image, (center_x, center_y), 5, (0, 255, 0), -1)
+                text = "Fire"
+                cv2.putText(
+                    image,
+                    text,
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2,
+                )
 
     return image, coordinates
 
 
 def main_fire_detection(img):
-    crop_percent = 90
-    cropped_img = crop_center(img, crop_percent)
-    processed_img = image_process(cropped_img)
+    # cropped_img = crop_center(img, crop_percent)
+    processed_img = image_process(img)
     img_after_thresholding = thresholding(processed_img)
     kernel = define_kernel(5, 5)
     mask = morphological_ops(img_after_thresholding, kernel)
 
-    final_img, coordinates = contour(mask, cropped_img.copy())
+    final_img, coordinates = contour(mask, img.copy())
 
     return final_img, coordinates, mask
 

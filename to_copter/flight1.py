@@ -39,9 +39,9 @@ set_effect = rospy.ServiceProxy("led/set_effect", SetLEDEffect)
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 
-API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
+# API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
 # API_BASEURL = "http://192.168.2.164:8000/api"
-# API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
+API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
 # API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False
@@ -178,15 +178,17 @@ def img_callback(msg):
                 (coord[0] + coord[2], coord[1]),
                 (coord[0], coord[1]),
             ]
-            area = polygon_area(image_point)
-            print("Area:", area)
 
-            if area <= 2000:
-                object_point = object_point_60_60
-            elif 2000 < area <= 3000:
-                object_point = object_point_60_90
+            if 0.8 <= coord[2] / coord[3] <= 1.2:
+                area = polygon_area(image_point)
+                print("Area:", area)
+
+                if area <= 5000:
+                    object_point = object_point_60_60
+                else:
+                    object_point = object_point_90_90
             else:
-                object_point = object_point_90_90
+                object_point = object_point_60_90
 
             _, rvec, tvec = cv2.solvePnP(
                 np.array(object_point, dtype="float32"),
@@ -241,7 +243,7 @@ def navigate_wait(
     y: float = 0,
     z: float = 0,
     yaw: float = float("nan"),
-    speed: float = 0.3,
+    speed: float = 0.25,
     frame_id: str = "",
     auto_arm: bool = False,
     tolerance: float = 0.2,
@@ -269,7 +271,7 @@ def navigate_wait(
                 if INTERRUPT:
                     arming(False)
                     exit()
-                set_position(x=telem.x, y=telem.y, z=telem.z, frame_id="aruco_map")
+                set_position(x=telem.x, y=telem.y, z=telem.z, yaw=yaw, frame_id="aruco_map")
                 rospy.sleep(0.2)
             navigate(
                 x=x,
@@ -301,7 +303,11 @@ try:
     rospy.loginfo("Setting state to ready to start")
     requests.post(
         f"{API_BASEURL}/state/1",
-        json={"ready_to_start": True, "ready_to_land": False},
+        json={
+            "ready_to_start": True,
+            "second_got_to_14": False,
+            "ready_to_land": False,
+        },
         timeout=10,
     )
 except Exception as e:
@@ -310,6 +316,12 @@ except Exception as e:
 cnt_errors = 0
 rospy.loginfo("Waiting for drone 0 to be ready to start")
 while not rospy.is_shutdown():
+    if LAND:
+        land_wait()
+        exit()
+    if INTERRUPT:
+        arming(False)
+        exit()
     if cnt_errors > 3:
         rospy.loginfo("Drone 0 is not ready to start, breaking")
         break
@@ -324,14 +336,100 @@ while not rospy.is_shutdown():
     rospy.sleep(0.2)
 
 
+visited_coords = set()
+
+
+def get_coords(curr_y: float, reverse_sort: bool = False, tolerance: float = 0.3):
+    global visited_coords
+    response = requests.get(f"{API_BASEURL}/get-coords", timeout=10)
+    coords = response.json()
+    coords = [(coord[0], coord[1]) for coord in coords if coord[1] >= curr_y]
+    coords.sort(key=lambda x: x[0], reverse=reverse_sort)
+    coords = [
+        coord
+        for coord in coords
+        if not any(
+            math.sqrt((coord[0] - v[0]) ** 2 + (coord[1] - v[1]) ** 2) <= tolerance
+            for v in visited_coords
+        )
+    ]
+    visited_coords.update(coords)
+    return coords
+
+
+def navigate_to_coords(curr_y: float, reverse_sort: bool = False):
+    coords = get_coords(curr_y, reverse_sort)
+    for coord in coords:
+        navigate_wait(x=coord[0], y=curr_y, z=1.5, frame_id="aruco_map")
+        navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
+        rospy.sleep(1)
+        set_effect(effect="blink", r=0, g=0, b=255)
+        navigate_wait(x=coord[0], y=coord[1], z=1.3, frame_id="aruco_map")
+        rospy.sleep(1)
+        navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
+        rospy.sleep(1)
+        set_effect(r=255, g=119, b=0)
+        navigate_wait(x=coord[0], y=curr_y, z=1.5, frame_id="aruco_map")
+
+
 # flight
 set_effect(r=255, g=119, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
 set_effect(r=255, g=119, b=0)
 
+navigate_wait(z=1.5, frame_id="aruco_4")
+navigate_wait(z=1.5, frame_id="aruco_0")
+navigate_wait(z=1.5, frame_id="aruco_30")
+navigate_to_coords(curr_y=5.4, reverse_sort=False)
+navigate_wait(z=1.5, frame_id="aruco_34")
+navigate_wait(z=1.5, frame_id="aruco_24")
+navigate_to_coords(curr_y=3.6, reverse_sort=True)
+navigate_wait(z=1.5, frame_id="aruco_20")
+navigate_wait(z=1.5, frame_id="aruco_10")
+navigate_to_coords(curr_y=1.8, reverse_sort=False)
+navigate_wait(z=1.5, frame_id="aruco_14")
+
+try:
+    rospy.loginfo("Setting state to second got to 14")
+    requests.post(
+        f"{API_BASEURL}/state/1",
+        json={
+            "ready_to_start": False,
+            "second_got_to_14": True,
+            "ready_to_land": False,
+        },
+        timeout=10,
+    )
+except Exception as e:
+    rospy.loginfo(f"Error setting state: {e}")
+
+rospy.sleep(2)
+
+navigate_wait(z=1.5, frame_id="aruco_4")
+navigate_to_coords(curr_y=0, reverse_sort=True)
+navigate_wait(z=1.5, frame_id="aruco_0")
+
+try:
+    rospy.loginfo("Setting state to ready to land")
+    requests.post(
+        f"{API_BASEURL}/state/1",
+        json={"ready_to_start": False, "second_got_to_14": True, "ready_to_land": True},
+        timeout=10,
+    )
+except Exception as e:
+    rospy.loginfo(f"Error setting state: {e}")
+
+navigate_wait(z=1.5, frame_id="aruco_4")
+
 cnt_errors = 0
 rospy.loginfo("Waiting for drone 0 to finish scanning")
 while not rospy.is_shutdown():
+    if LAND:
+        land_wait()
+        exit()
+    if INTERRUPT:
+        arming(False)
+        exit()
     if cnt_errors > 3:
         rospy.loginfo("Errors, drone 0 is not finished scanning, breaking")
         break
@@ -345,37 +443,6 @@ while not rospy.is_shutdown():
         cnt_errors += 1
     rospy.sleep(0.2)
 
-response = requests.get(f"{API_BASEURL}/get-coords", timeout=10)
-coords = response.json()
-coords = [(coord[0], coord[1]) for coord in coords]
-coords.sort(key=lambda x: x[1])
-
-for coord in coords:
-    if coord[0] <= 1.5 and coord[1] <= 1.5:
-        rospy.loginfo("Coord is too close to first, skipping")
-        continue
-    navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
-    rospy.sleep(1)
-    set_effect(effect="blink", r=0, g=0, b=255)
-    navigate_wait(x=coord[0], y=coord[1], z=1.3, frame_id="aruco_map")
-    rospy.sleep(1)
-    navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
-    rospy.sleep(1)
-    set_effect(r=255, g=119, b=0)
-
-navigate_wait(z=1.5, frame_id="aruco_4")
-
-# SYNC LANDING
-try:
-    rospy.loginfo("Setting state to ready to land")
-    requests.post(
-        f"{API_BASEURL}/state/1",
-        json={"ready_to_start": False, "ready_to_land": True},
-        timeout=10,
-    )
-except Exception as e:
-    rospy.loginfo(f"Error setting state: {e}")
-
 land_wait()
 
 set_effect(r=0, g=0, b=0)
@@ -383,7 +450,11 @@ set_effect(r=0, g=0, b=0)
 try:
     requests.post(
         f"{API_BASEURL}/state/1",
-        json={"ready_to_start": False, "ready_to_land": False},
+        json={
+            "ready_to_start": False,
+            "second_got_to_14": False,
+            "ready_to_land": False,
+        },
         timeout=10,
     )
     requests.post(f"{API_BASEURL}/reset_pids/1", timeout=10)

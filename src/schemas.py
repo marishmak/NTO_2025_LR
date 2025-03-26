@@ -27,4 +27,5 @@ class Status(BaseModel):
 
 class DroneState(BaseModel):
     ready_to_start: bool
+    second_got_to_14: bool
     ready_to_land: bool

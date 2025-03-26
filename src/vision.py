@@ -4,9 +4,6 @@ import cv2
 import numpy as np
 
 
-crop_percent = 25
-
-
 def crop_center(image, percent):
     h, w = image.shape[:2]
     crop_width = int(w * percent / 100)
@@ -78,6 +75,9 @@ def contour(fire_mask, image) -> Tuple[np.ndarray, List[Tuple[int, int, int, int
     )
     coordinates = []
 
+    crop_percent_x = 0.25
+    crop_percent_y = 0.25
+
     for contour in contours:
         pixel_area = cv2.contourArea(contour)
         if pixel_area > 500:
@@ -87,10 +87,10 @@ def contour(fire_mask, image) -> Tuple[np.ndarray, List[Tuple[int, int, int, int
             center_y = y + h // 2
 
             if (
-                center_x >= crop_percent * image.shape[1] / 100
-                and center_x <= (100 - crop_percent) * image.shape[1] / 100
-                and center_y >= crop_percent * image.shape[0] / 100
-                and center_y <= (100 - crop_percent) * image.shape[0] / 100
+                center_x >= crop_percent_x * image.shape[1]
+                and center_x <= (1 - crop_percent_x) * image.shape[1]
+                and center_y >= crop_percent_y * image.shape[0]
+                and center_y <= (1 - crop_percent_y) * image.shape[0]
             ):
                 coordinates.append((x, y, w, h))
 

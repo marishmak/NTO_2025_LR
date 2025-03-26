@@ -5,8 +5,8 @@ from schemas import DroneState
 class DroneStateRepository:
     def __init__(self):
         self.drone_states = {
-            0: DroneState(ready_to_land=False, ready_to_start=False),
-            1: DroneState(ready_to_land=False, ready_to_start=False),
+            0: DroneState(ready_to_land=False, second_got_to_14=False, ready_to_start=False),
+            1: DroneState(ready_to_land=False, second_got_to_14=False, ready_to_start=False),
         }
 
     def get_state(self, drone_id: int) -> DroneState:

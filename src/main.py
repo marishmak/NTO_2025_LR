@@ -337,4 +337,4 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
 def get_coords():
     points = coords_0.copy() + coords_1.copy()
     print(points)
-    return clusterize_coords(points, threshold=0.25)
+    return clusterize_coords(points, threshold=0.3)

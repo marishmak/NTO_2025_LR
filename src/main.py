@@ -30,6 +30,12 @@ dir_path = Path(__file__).parent.parent
 
 
 def connect(ssh0: SSHClient, ssh1: SSHClient):
+    """Establishes SSH connections to drones.
+
+    Args:
+        ssh0: SSH client for first drone
+        ssh1: SSH client for second drone
+    """
     ssh0.load_system_host_keys()
     ssh0.connect(
         config.drone_ip0,
@@ -48,6 +54,12 @@ def connect(ssh0: SSHClient, ssh1: SSHClient):
 
 
 def disconnect(ssh0: SSHClient, ssh1: SSHClient):
+    """Closes SSH connections to drones.
+
+    Args:
+        ssh0: SSH client for first drone
+        ssh1: SSH client for second drone
+    """
     ssh0.close()
     if not config.is_one_drone:
         ssh1.close()
@@ -77,6 +89,14 @@ frames_1 = []
 
 
 def start(ssh0: SSHClient, ssh1: SSHClient):
+    """Starts the flight mission on drones.
+
+    Copies necessary files and launches flight scripts on both drones.
+
+    Args:
+        ssh0: SSH client for first drone
+        ssh1: SSH client for second drone
+    """
     global pid0, pid1, coords_0, frames_0, coords_1, frames_1
 
     coords_0 = []
@@ -126,6 +146,11 @@ def start(ssh0: SSHClient, ssh1: SSHClient):
 
 
 def perform_action(action: str):
+    """Sends MAVLink command to drones.
+
+    Args:
+        action: Command to send (INTERRUPT/LAND/PAUSE)
+    """
     global pid0, pid1
 
     pid0 = None
@@ -152,6 +177,17 @@ def perform_action(action: str):
 
 @app.post("/api/action", response_model=Message)
 def handle_button_action(button_data: ButtonAction):
+    """Handles drone control actions from frontend.
+
+    Args:
+        button_data: Action to perform (start/shutdown/land/pause)
+
+    Returns:
+        Message confirming the action
+
+    Raises:
+        HTTPException: If action is unknown
+    """
     if button_data.action == Action.start_mission:
         ssh0, ssh1 = SSHClient(), SSHClient()
         connect(ssh0, ssh1)
@@ -176,6 +212,14 @@ def handle_button_action(button_data: ButtonAction):
 
 
 def check_error(stdout_str: str) -> bool:
+    """Checks drone's stdout for critical system errors.
+
+    Args:
+        stdout_str: Output string from drone's selfcheck
+
+    Returns:
+        True if critical error found, False otherwise
+    """
     if "ERROR: ros.mavros.fcu" in stdout_str:
         return True
     if "RPi health: system throttled to prevent damage" in stdout_str:
@@ -193,6 +237,16 @@ def check_error(stdout_str: str) -> bool:
 
 
 def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float, float]:
+    """Gets battery status from specified drone.
+
+    Args:
+        ssh0: SSH client for first drone
+        ssh1: SSH client for second drone
+        drone_id: ID of the drone to check (0 or 1)
+
+    Returns:
+        Tuple of (voltage, percentage)
+    """
     if drone_id == 1 and config.is_one_drone:
         return 0, 0
     try:
@@ -213,6 +267,14 @@ def get_battery(ssh0: SSHClient, ssh1: SSHClient, drone_id: int) -> Tuple[float,
 
 @app.get("/api/status/{drone_id}", response_model=Status)
 def get_status(drone_id: int):
+    """Gets current status of specified drone.
+
+    Args:
+        drone_id: ID of the drone (0 or 1)
+
+    Returns:
+        Status object with connection, readiness and battery info
+    """
     ssh0, ssh1 = SSHClient(), SSHClient()
     connect(ssh0, ssh1)
     connection = True
@@ -243,6 +305,11 @@ def get_status(drone_id: int):
 
 @app.post("/api/reset_pids/{drone_id}")
 def reset_pids(drone_id: int):
+    """Resets stored PID for specified drone.
+
+    Args:
+        drone_id: ID of the drone (0 or 1)
+    """
     global pid0, pid1
     if drone_id == 0:
         pid0 = None
@@ -252,17 +319,42 @@ def reset_pids(drone_id: int):
 
 @app.get("/api/state/{drone_id}", response_model=DroneState)
 def get_drone_state(drone_id: int):
+    """Gets current state of specified drone.
+
+    Args:
+        drone_id: ID of the drone (0 or 1)
+
+    Returns:
+        DroneState object with current state
+    """
     return drone_state_repo.get_state(drone_id)
 
 
 @app.post("/api/state/{drone_id}", response_model=DroneState)
 def update_drone_state(drone_id: int, new_state: DroneState):
+    """Updates state of specified drone.
+
+    Args:
+        drone_id: ID of the drone (0 or 1)
+        new_state: New state to set
+
+    Returns:
+        Updated DroneState object
+    """
     drone_state_repo.update_state(drone_id, new_state)
     return new_state
 
 
 @app.websocket("/api/process-frame/{drone_id}")
 async def websocket_process_frame(websocket: WebSocket, drone_id: int):
+    """WebSocket endpoint for real-time frame processing.
+
+    Receives frames, processes them for fire detection, and returns coordinates.
+
+    Args:
+        websocket: WebSocket connection
+        drone_id: ID of the drone (0 or 1)
+    """
     await websocket.accept()
     try:
         while True:
@@ -287,6 +379,12 @@ async def websocket_process_frame(websocket: WebSocket, drone_id: int):
 
 @app.websocket("/api/process-coords/{drone_id}")
 async def websocket_process_coords(websocket: WebSocket, drone_id: int):
+    """WebSocket endpoint for receiving fire coordinates from drones.
+
+    Args:
+        websocket: WebSocket connection
+        drone_id: ID of the drone (0 or 1)
+    """
     await websocket.accept()
     try:
         while True:
@@ -301,6 +399,14 @@ async def websocket_process_coords(websocket: WebSocket, drone_id: int):
 
 @app.websocket("/api/fire-data/{drone_id}")
 async def websocket_fire_data(websocket: WebSocket, drone_id: int):
+    """WebSocket endpoint for sending processed fire detection frames.
+
+    Sends base64 encoded images with detected fires to frontend.
+
+    Args:
+        websocket: WebSocket connection
+        drone_id: ID of the drone (0 or 1)
+    """
     await websocket.accept()
     try:
         while True:
@@ -335,6 +441,11 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
 
 @app.get("/api/get-coords", response_model=List[Tuple[float, float, float]])
 def get_coords():
+    """Returns clustered coordinates of detected fires from both drones.
+
+    Returns:
+        List of (x, y, area) tuples representing clustered fire locations
+    """
     points = coords_0.copy() + coords_1.copy()
     print(points)
     return clusterize_coords(points, threshold=0.3)

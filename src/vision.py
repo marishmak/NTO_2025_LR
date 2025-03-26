@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 
-crop_percent = 15
+crop_percent = 25
 
 
 def crop_center(image, percent):

@@ -157,7 +157,7 @@ def img_callback(msg):
         return
 
     counter += 1
-    if counter % 5 != 0:
+    if counter % 3 != 0:
         return
 
     try:
@@ -241,7 +241,7 @@ def navigate_wait(
     y: float = 0,
     z: float = 0,
     yaw: float = float("nan"),
-    speed: float = 0.2,
+    speed: float = 0.25,
     frame_id: str = "",
     auto_arm: bool = False,
     tolerance: float = 0.2,
@@ -325,9 +325,9 @@ while not rospy.is_shutdown():
 
 
 #  0->30->31->1->0
-set_effect(r=255, g=165, b=0)
+set_effect(r=255, g=119, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
-set_effect(r=255, g=165, b=0)
+set_effect(r=255, g=119, b=0)
 do_recognition = True
 navigate_wait(z=1.5, frame_id="aruco_0")
 navigate_wait(z=1.5, frame_id="aruco_31")

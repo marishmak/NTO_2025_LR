@@ -157,7 +157,7 @@ def img_callback(msg):
         return
 
     counter += 1
-    if counter % 5 != 0:
+    if counter % 3 != 0:
         return
 
     try:
@@ -241,7 +241,7 @@ def navigate_wait(
     y: float = 0,
     z: float = 0,
     yaw: float = float("nan"),
-    speed: float = 0.2,
+    speed: float = 0.3,
     frame_id: str = "",
     auto_arm: bool = False,
     tolerance: float = 0.2,
@@ -325,9 +325,9 @@ while not rospy.is_shutdown():
 
 
 # flight
-set_effect(r=255, g=165, b=0)
+set_effect(r=255, g=119, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
-set_effect(r=255, g=165, b=0)
+set_effect(r=255, g=119, b=0)
 
 cnt_errors = 0
 rospy.loginfo("Waiting for drone 0 to finish scanning")
@@ -351,17 +351,17 @@ coords = [(coord[0], coord[1]) for coord in coords]
 coords.sort(key=lambda x: x[1])
 
 for coord in coords:
-    if coord[0] <= 0.9 and coord[1] <= 0.9:
+    if coord[0] <= 1.5 and coord[1] <= 1.5:
         rospy.loginfo("Coord is too close to first, skipping")
         continue
     navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
-    rospy.sleep(0.2)
+    rospy.sleep(1)
     set_effect(effect="blink", r=0, g=0, b=255)
     navigate_wait(x=coord[0], y=coord[1], z=1.3, frame_id="aruco_map")
-    rospy.sleep(0.2)
+    rospy.sleep(1)
     navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
-    rospy.sleep(0.2)
-    set_effect(r=255, g=165, b=0)
+    rospy.sleep(1)
+    set_effect(r=255, g=119, b=0)
 
 navigate_wait(z=1.5, frame_id="aruco_4")
 

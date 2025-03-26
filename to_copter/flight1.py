@@ -9,6 +9,7 @@ import numpy as np
 import requests
 import rospy
 from clover import long_callback, srv
+from clover.srv import SetLEDEffect
 from cv_bridge import CvBridge
 from mavros_msgs.srv import CommandBool
 from pymavlink import mavutil
@@ -33,14 +34,15 @@ set_velocity = rospy.ServiceProxy("set_velocity", srv.SetVelocity)
 set_attitude = rospy.ServiceProxy("set_attitude", srv.SetAttitude)
 set_rates = rospy.ServiceProxy("set_rates", srv.SetRates)
 land = rospy.ServiceProxy("land", Trigger)
+set_effect = rospy.ServiceProxy("led/set_effect", SetLEDEffect)
 
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 
-# API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
+API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
 # API_BASEURL = "http://192.168.2.164:8000/api"
 # API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
-API_BASEURL = "http://127.0.0.1:8000/api"
+# API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False
 INTERRUPT = False
@@ -322,17 +324,46 @@ while not rospy.is_shutdown():
     rospy.sleep(0.2)
 
 
-# 4->34->33->3->4
+# flight
+set_effect(r=255, g=165, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
-do_recognition = True
-navigate_wait(z=1.5, frame_id="aruco_4")
-navigate_wait(z=1.5, frame_id="aruco_34")
-navigate_wait(z=1.5, frame_id="aruco_33")
-navigate_wait(z=1.5, frame_id="aruco_3")
-navigate_wait(z=1.5, frame_id="aruco_4")
-do_recognition = False
+set_effect(r=255, g=165, b=0)
 
-websocket_frame.send("stop".encode("utf-8"))
+cnt_errors = 0
+rospy.loginfo("Waiting for drone 0 to finish scanning")
+while not rospy.is_shutdown():
+    if cnt_errors > 3:
+        rospy.loginfo("Errors, drone 0 is not finished scanning, breaking")
+        break
+    try:
+        r = requests.get(f"{API_BASEURL}/state/0", timeout=3)
+        r.raise_for_status()
+        if r.json()["ready_to_land"]:
+            break
+    except Exception as e:
+        rospy.loginfo(f"Error getting state: {e}")
+        cnt_errors += 1
+    rospy.sleep(0.2)
+
+response = requests.get(f"{API_BASEURL}/get-coords", timeout=10)
+coords = response.json()
+coords = [(coord[0], coord[1]) for coord in coords]
+coords.sort(key=lambda x: x[1])
+
+for coord in coords:
+    if coord[0] <= 0.9 and coord[1] <= 0.9:
+        rospy.loginfo("Coord is too close to first, skipping")
+        continue
+    navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
+    rospy.sleep(0.2)
+    set_effect(effect="blink", r=0, g=0, b=255)
+    navigate_wait(x=coord[0], y=coord[1], z=1.3, frame_id="aruco_map")
+    rospy.sleep(0.2)
+    navigate_wait(x=coord[0], y=coord[1], z=1.5, frame_id="aruco_map")
+    rospy.sleep(0.2)
+    set_effect(r=255, g=165, b=0)
+
+navigate_wait(z=1.5, frame_id="aruco_4")
 
 # SYNC LANDING
 try:
@@ -345,23 +376,9 @@ try:
 except Exception as e:
     rospy.loginfo(f"Error setting state: {e}")
 
-cnt_errors = 0
-rospy.loginfo("Waiting for drone 0 to be ready to land")
-while not rospy.is_shutdown():
-    if cnt_errors > 3:
-        rospy.loginfo("Drone 0 is not ready to land, breaking")
-        break
-    try:
-        r = requests.get(f"{API_BASEURL}/state/0", timeout=3)
-        r.raise_for_status()
-        if r.json()["ready_to_land"]:
-            break
-    except Exception as e:
-        rospy.loginfo(f"Error getting state: {e}")
-        cnt_errors += 1
-    rospy.sleep(0.2)
-
 land_wait()
+
+set_effect(r=0, g=0, b=0)
 
 try:
     requests.post(

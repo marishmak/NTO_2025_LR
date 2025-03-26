@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import requests
 import rospy
+from clover.srv import SetLEDEffect
 from clover import long_callback, srv
 from cv_bridge import CvBridge
 from mavros_msgs.srv import CommandBool
@@ -33,14 +34,15 @@ set_velocity = rospy.ServiceProxy("set_velocity", srv.SetVelocity)
 set_attitude = rospy.ServiceProxy("set_attitude", srv.SetAttitude)
 set_rates = rospy.ServiceProxy("set_rates", srv.SetRates)
 land = rospy.ServiceProxy("land", Trigger)
+set_effect = rospy.ServiceProxy("led/set_effect", SetLEDEffect)
 
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 
-# API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
+API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
 # API_BASEURL = "http://192.168.2.164:8000/api"
 # API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
-API_BASEURL = "http://127.0.0.1:8000/api"
+# API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False
 INTERRUPT = False
@@ -323,12 +325,16 @@ while not rospy.is_shutdown():
 
 
 #  0->30->31->1->0
+set_effect(r=255, g=165, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
+set_effect(r=255, g=165, b=0)
 do_recognition = True
 navigate_wait(z=1.5, frame_id="aruco_0")
-navigate_wait(z=1.5, frame_id="aruco_30")
 navigate_wait(z=1.5, frame_id="aruco_31")
-navigate_wait(z=1.5, frame_id="aruco_1")
+navigate_wait(z=1.5, frame_id="aruco_7")
+navigate_wait(z=1.5, frame_id="aruco_33")
+navigate_wait(z=1.5, frame_id="aruco_14")
+navigate_wait(z=1.5, frame_id="aruco_10")
 navigate_wait(z=1.5, frame_id="aruco_0")
 do_recognition = False
 
@@ -362,6 +368,8 @@ while not rospy.is_shutdown():
     rospy.sleep(0.2)
 
 land_wait()
+
+set_effect(r=0, g=0, b=0)
 
 try:
     requests.post(

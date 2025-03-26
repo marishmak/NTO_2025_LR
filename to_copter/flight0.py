@@ -19,7 +19,7 @@ from tf2_geometry_msgs import PointStamped
 from tf2_ros import Buffer, TransformListener
 from websockets.sync.client import connect as websocket_connect
 
-# sys.stdout = open("flight0.log", "w")
+sys.stdout = open("flight0.log", "w")
 
 rospy.init_node("flight0")
 

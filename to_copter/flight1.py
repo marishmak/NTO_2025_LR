@@ -177,10 +177,11 @@ def img_callback(msg):
                 (coord[0], coord[1]),
             ]
             area = polygon_area(image_point)
+            print("Area:", area)
 
             if area <= 2000:
                 object_point = object_point_60_60
-            elif 2000 <= area <= 2500:
+            elif 2000 < area <= 3000:
                 object_point = object_point_60_90
             else:
                 object_point = object_point_90_90
@@ -330,6 +331,8 @@ navigate_wait(z=1.5, frame_id="aruco_33")
 navigate_wait(z=1.5, frame_id="aruco_3")
 navigate_wait(z=1.5, frame_id="aruco_4")
 do_recognition = False
+
+websocket_frame.send("stop".encode("utf-8"))
 
 # SYNC LANDING
 try:

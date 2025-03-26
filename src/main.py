@@ -267,10 +267,13 @@ async def websocket_process_frame(websocket: WebSocket, drone_id: int):
     try:
         while True:
             data = await websocket.receive_bytes()
-
-            pil_image = Image.open(io.BytesIO(data))
-            image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-            final_img, coordinates, _ = main_fire_detection(image)
+            if data == b"stop":
+                final_img = None
+                coordinates = None
+            else:
+                pil_image = Image.open(io.BytesIO(data))
+                image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                final_img, coordinates, _ = main_fire_detection(image)
 
             if drone_id == 0:
                 frames_0.append(final_img)
@@ -316,6 +319,9 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
             if current_frames:
                 fire_data = []
                 for frame in current_frames:
+                    if frame is None:
+                        await websocket.close()
+                        return
                     _, buffer = cv2.imencode(".png", frame)
                     image_data = base64.b64encode(buffer).decode("utf-8")
                     fire_data.append({"image_data": image_data})
@@ -330,4 +336,5 @@ async def websocket_fire_data(websocket: WebSocket, drone_id: int):
 @app.get("/api/get-coords", response_model=List[Tuple[float, float, float]])
 def get_coords():
     points = coords_0.copy() + coords_1.copy()
-    return clusterize_coords(points, threshold=0.6)
+    print(points)
+    return clusterize_coords(points, threshold=0.2)

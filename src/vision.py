@@ -5,6 +5,15 @@ import numpy as np
 
 
 def crop_center(image, percent):
+    """Crops image from center by specified percentage.
+
+    Args:
+        image: Input image array
+        percent: Percentage of original size to keep
+
+    Returns:
+        Cropped image array
+    """
     h, w = image.shape[:2]
     crop_width = int(w * percent / 100)
     crop_height = int(h * percent / 100)
@@ -19,6 +28,14 @@ def crop_center(image, percent):
 
 
 def image_process(img):
+    """Processes image to detect fire-like colors using HSV thresholding.
+
+    Args:
+        img: Input BGR image array
+
+    Returns:
+        Processed image with only fire-colored pixels
+    """
     hsv_image = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
     lower_red_1 = np.array([0, 90, 90])
@@ -45,6 +62,14 @@ def image_process(img):
 
 
 def thresholding(processed_img):
+    """Applies thresholding to processed image after Gaussian and median blur.
+
+    Args:
+        processed_img: Color-filtered image array
+
+    Returns:
+        Binary threshold image
+    """
     img_gray = cv2.cvtColor(processed_img, cv2.COLOR_BGR2GRAY)
     img_gray = cv2.GaussianBlur(img_gray, (11, 11), 0)
     img_gray = cv2.medianBlur(img_gray, 9)
@@ -54,11 +79,29 @@ def thresholding(processed_img):
 
 
 def define_kernel(x, y):
+    """Creates kernel for morphological operations.
+
+    Args:
+        x: Kernel width
+        y: Kernel height
+
+    Returns:
+        numpy array kernel of ones
+    """
     kernel = np.ones((x, y), np.uint8)
     return kernel
 
 
 def morphological_ops(img_after_thresholding, kernel):
+    """Applies morphological operations to clean up thresholded image.
+
+    Args:
+        img_after_thresholding: Binary image array
+        kernel: Morphological operation kernel
+
+    Returns:
+        Processed binary image after opening, erosion, dilation and closing
+    """
     opening = cv2.morphologyEx(
         img_after_thresholding, cv2.MORPH_OPEN, kernel, iterations=2
     )
@@ -70,6 +113,17 @@ def morphological_ops(img_after_thresholding, kernel):
 
 
 def contour(fire_mask, image) -> Tuple[np.ndarray, List[Tuple[int, int, int, int]]]:
+    """Detects and draws fire contours on image.
+
+    Args:
+        fire_mask: Binary image with fire regions
+        image: Original image to draw on
+
+    Returns:
+        Tuple of:
+            - Image with drawn contours and labels
+            - List of contour coordinates (x, y, width, height)
+    """
     contours, _ = cv2.findContours(
         fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
@@ -111,6 +165,17 @@ def contour(fire_mask, image) -> Tuple[np.ndarray, List[Tuple[int, int, int, int
 
 
 def main_fire_detection(img):
+    """Main fire detection pipeline.
+
+    Args:
+        img: Input BGR image array
+
+    Returns:
+        Tuple of:
+            - Image with detected fires marked
+            - List of fire coordinates
+            - Binary mask of fire regions
+    """
     # cropped_img = crop_center(img, crop_percent)
     processed_img = image_process(img)
     img_after_thresholding = thresholding(processed_img)

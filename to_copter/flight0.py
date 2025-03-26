@@ -50,9 +50,9 @@ PAUSE = False
 
 
 def listen_for_status_text():
-    """
-    Listen for MAVLink STATUSTEXT messages and set corresponding
-    global flags when specific commands are received.
+    """Listens for MAVLink STATUSTEXT messages to control drone state.
+
+    Sets global flags LAND, INTERRUPT, or PAUSE based on received commands.
     """
     global LAND, INTERRUPT, PAUSE
     connection_str = "udpin:0.0.0.0:14550"
@@ -129,6 +129,19 @@ websocket_coords = websocket_connect(
 def transform_xyz_yaw(
     x: float, y: float, z: float, frame_from: str, frame_to: str, curr_time: rospy.Time
 ) -> Tuple[float, float, float]:
+    """Transforms point coordinates between different reference frames.
+
+    Args:
+        x: X coordinate
+        y: Y coordinate
+        z: Z coordinate
+        frame_from: Source reference frame
+        frame_to: Target reference frame
+        curr_time: ROS timestamp
+
+    Returns:
+        Tuple of transformed (x, y, z) coordinates
+    """
     point_from = PointStamped()
     point_from.header.frame_id = frame_from
     point_from.header.stamp = curr_time
@@ -140,6 +153,14 @@ def transform_xyz_yaw(
 
 
 def polygon_area(points):
+    """Calculates area of polygon defined by points.
+
+    Args:
+        points: List of (x, y) coordinates defining polygon vertices
+
+    Returns:
+        Area of polygon
+    """
     n = len(points)
     area = 0.0
     for i in range(n):
@@ -151,6 +172,13 @@ def polygon_area(points):
 
 @long_callback
 def img_callback(msg):
+    """Processes camera frames for fire detection.
+
+    Performs fire detection on received images and sends results via websocket.
+
+    Args:
+        msg: ROS Image message
+    """
     global counter, do_recognition
 
     if not do_recognition:
@@ -248,6 +276,20 @@ def navigate_wait(
     auto_arm: bool = False,
     tolerance: float = 0.2,
 ) -> None:
+    """Navigates drone to specified position and waits for arrival.
+
+    Handles interruption commands (LAND, INTERRUPT, PAUSE) during navigation.
+
+    Args:
+        x: Target X coordinate
+        y: Target Y coordinate
+        z: Target Z coordinate
+        yaw: Target yaw angle (NaN for no rotation)
+        speed: Movement speed
+        frame_id: Reference frame ID
+        auto_arm: Whether to arm automatically
+        tolerance: Position arrival tolerance
+    """
     if LAND or INTERRUPT or PAUSE:
         return
 
@@ -271,7 +313,9 @@ def navigate_wait(
                 if INTERRUPT:
                     arming(False)
                     exit()
-                set_position(x=telem.x, y=telem.y, z=telem.z, yaw=yaw, frame_id="aruco_map")
+                set_position(
+                    x=telem.x, y=telem.y, z=telem.z, yaw=yaw, frame_id="aruco_map"
+                )
                 rospy.sleep(0.2)
             navigate(
                 x=x,
@@ -291,6 +335,10 @@ def navigate_wait(
 
 
 def land_wait():
+    """Initiates landing and waits for completion.
+
+    Exits if INTERRUPT command received.
+    """
     if INTERRUPT:
         return
     land()

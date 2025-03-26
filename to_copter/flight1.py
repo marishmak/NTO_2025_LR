@@ -271,7 +271,7 @@ def navigate_wait(
                 if INTERRUPT:
                     arming(False)
                     exit()
-                set_position(x=telem.x, y=telem.y, z=telem.z, frame_id="aruco_map")
+                set_position(x=telem.x, y=telem.y, z=telem.z, yaw=yaw, frame_id="aruco_map")
                 rospy.sleep(0.2)
             navigate(
                 x=x,

@@ -39,9 +39,9 @@ set_effect = rospy.ServiceProxy("led/set_effect", SetLEDEffect)
 arming = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
 
 
-API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
+# API_BASEURL = "http://192.168.0.36:8000/api"  # test flight
 # API_BASEURL = "http://192.168.2.164:8000/api"
-# API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
+API_BASEURL = "http://192.168.0.30:8000/api"  # final flight
 # API_BASEURL = "http://127.0.0.1:8000/api"
 
 LAND = False

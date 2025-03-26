@@ -301,7 +301,11 @@ try:
     rospy.loginfo("Setting state to ready to start")
     requests.post(
         f"{API_BASEURL}/state/0",
-        json={"ready_to_start": True, "ready_to_land": False},
+        json={
+            "ready_to_start": True,
+            "second_got_to_14": False,
+            "ready_to_land": False,
+        },
         timeout=10,
     )
 except Exception as e:
@@ -310,6 +314,12 @@ except Exception as e:
 cnt_errors = 0
 rospy.loginfo("Waiting for drone 1 to be ready to start")
 while not rospy.is_shutdown():
+    if LAND:
+        land_wait()
+        exit()
+    if INTERRUPT:
+        arming(False)
+        exit()
     if cnt_errors > 3:
         rospy.loginfo("Drone 1 is not ready to start, breaking")
         break
@@ -328,44 +338,72 @@ while not rospy.is_shutdown():
 set_effect(r=255, g=119, b=0)
 navigate_wait(z=1.5, frame_id="body", auto_arm=True)
 set_effect(r=255, g=119, b=0)
-do_recognition = True
 navigate_wait(z=1.5, frame_id="aruco_0")
-navigate_wait(z=1.5, frame_id="aruco_31")
-navigate_wait(z=1.5, frame_id="aruco_7")
-navigate_wait(z=1.5, frame_id="aruco_33")
-navigate_wait(z=1.5, frame_id="aruco_14")
-navigate_wait(z=1.5, frame_id="aruco_10")
+navigate_wait(z=1.5, frame_id="aruco_25")
+do_recognition = True
+navigate_wait(z=1.5, frame_id="aruco_29")
+navigate_wait(z=1.5, frame_id="aruco_19")
+navigate_wait(z=1.5, frame_id="aruco_15")
+navigate_wait(z=1.5, frame_id="aruco_5")
+navigate_wait(z=1.5, frame_id="aruco_9")
+navigate_wait(z=1.5, frame_id="aruco_4")
 navigate_wait(z=1.5, frame_id="aruco_0")
 do_recognition = False
 
-websocket_frame.send("stop".encode("utf-8"))
+rospy.loginfo("Waiting for drone 1 to get to aruco #14")
+while not rospy.is_shutdown():
+    try:
+        if LAND:
+            land_wait()
+            exit()
+        if INTERRUPT:
+            arming(False)
+            exit()
+        r = requests.get(f"{API_BASEURL}/state/1", timeout=3)
+        r.raise_for_status()
+        if r.json()["second_got_to_14"]:
+            break
+    except Exception as e:
+        rospy.loginfo(f"Error getting state: {e}")
+    rospy.sleep(0.2)
 
-# SYNC LANDING
-try:
-    rospy.loginfo("Setting state to ready to land")
-    requests.post(
-        f"{API_BASEURL}/state/0",
-        json={"ready_to_start": False, "ready_to_land": True},
-        timeout=10,
-    )
-except Exception as e:
-    rospy.loginfo(f"Error setting state: {e}")
+navigate_wait(z=1.5, frame_id="aruco_30")
 
-cnt_errors = 0
 rospy.loginfo("Waiting for drone 1 to be ready to land")
 while not rospy.is_shutdown():
-    if cnt_errors > 3:
-        rospy.loginfo("Drone 1 is not ready to land, breaking")
-        break
     try:
+        if LAND:
+            land_wait()
+            exit()
+        if INTERRUPT:
+            arming(False)
+            exit()
         r = requests.get(f"{API_BASEURL}/state/1", timeout=3)
         r.raise_for_status()
         if r.json()["ready_to_land"]:
             break
     except Exception as e:
         rospy.loginfo(f"Error getting state: {e}")
-        cnt_errors += 1
     rospy.sleep(0.2)
+
+navigate_wait(z=1.5, frame_id="aruco_0")
+
+# SYNC LANDING
+try:
+    rospy.loginfo("Setting state to ready to land")
+    requests.post(
+        f"{API_BASEURL}/state/0",
+        json={
+            "ready_to_start": False,
+            "second_got_to_14": False,
+            "ready_to_land": True,
+        },
+        timeout=10,
+    )
+except Exception as e:
+    rospy.loginfo(f"Error setting state: {e}")
+
+websocket_frame.send("stop".encode("utf-8"))
 
 land_wait()
 
@@ -374,7 +412,11 @@ set_effect(r=0, g=0, b=0)
 try:
     requests.post(
         f"{API_BASEURL}/state/0",
-        json={"ready_to_start": False, "ready_to_land": False},
+        json={
+            "ready_to_start": False,
+            "second_got_to_14": False,
+            "ready_to_land": False,
+        },
         timeout=10,
     )
     requests.post(f"{API_BASEURL}/reset_pids/0", timeout=10)

@@ -178,15 +178,17 @@ def img_callback(msg):
                 (coord[0] + coord[2], coord[1]),
                 (coord[0], coord[1]),
             ]
-            area = polygon_area(image_point)
-            print("Area:", area)
 
-            if area <= 2000:
-                object_point = object_point_60_60
-            elif 2000 < area <= 3000:
-                object_point = object_point_60_90
+            if 0.8 <= coord[2] / coord[3] <= 1.2:
+                area = polygon_area(image_point)
+                print("Area:", area)
+
+                if area <= 5000:
+                    object_point = object_point_60_60
+                else:
+                    object_point = object_point_90_90
             else:
-                object_point = object_point_90_90
+                object_point = object_point_60_90
 
             _, rvec, tvec = cv2.solvePnP(
                 np.array(object_point, dtype="float32"),
